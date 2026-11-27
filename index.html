@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>For Someone Special — A Meal Made With Love</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #0e0b11;
+    color: #f6eadc;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+  #stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at center, #1b1521 0%, #0b080d 100%);
+  }
+  #frame-wrap {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.85), 0 0 0 2px #2b2233;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #141018;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #pixel-canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  #letter-canvas {
+    pointer-events: none;
+  }
+  #vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 58%, rgba(10, 6, 14, 0.45) 100%);
+  }
+  #title-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(14, 10, 18, 0.72);
+    backdrop-filter: blur(2px);
+    z-index: 20;
+    transition: opacity 0.8s ease;
+    text-align: center;
+    padding: 24px;
+  }
+  #title-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .badge {
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #f3b57a;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: clamp(24px, 4vw, 44px);
+    color: #fff3e4;
+    text-shadow: 0 4px 0 #3a2334;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+  .subtitle {
+    font-size: clamp(13px, 1.5vw, 17px);
+    color: #d8c4b8;
+    max-width: 540px;
+    line-height: 1.5;
+    margin-bottom: 28px;
+  }
+  #play-start-btn {
+    background: #e88d67;
+    color: #1c1118;
+    border: none;
+    padding: 14px 32px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: 1px;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 5px 0 #9f4f36, 0 10px 25px rgba(0, 0, 0, 0.45);
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+  #play-start-btn:hover {
+    background: #f3a17c;
+    transform: translateY(-2px);
+  }
+  #play-start-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 #9f4f36;
+  }
+  #controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: linear-gradient(to top, rgba(12, 9, 15, 0.88), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  #frame-wrap:hover #controls,
+  #controls.visible {
+    opacity: 1;
+  }
+  .ctrl-btn {
+    background: rgba(40, 31, 48, 0.85);
+    color: #f6eadc;
+    border: 1px solid rgba(243, 181, 122, 0.3);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .ctrl-btn:hover {
+    background: rgba(66, 50, 78, 0.95);
+    border-color: #f3b57a;
+  }
+  #scrubber {
+    flex: 1;
+    accent-color: #e88d67;
+    cursor: pointer;
+    height: 4px;
+  }
+  #scene-label {
+    font-size: 11px;
+    color: #f3b57a;
+    min-width: 145px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #time-label {
+    font-size: 11px;
+    color: #cbbab0;
+    min-width: 72px;
+    text-align: right;
+  }
+  #ending-bar {
+    position: absolute;
+    bottom: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 16;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(22, 16, 26, 0.88);
+    border: 1px solid rgba(243, 181, 122, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1s ease;
+    font-size: 12px;
+    color: #fcebd9;
+  }
+  #ending-bar.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="frame-wrap">
+    <canvas id="pixel-canvas" width="320" height="180"></canvas>
+    <canvas id="letter-canvas" width="1280" height="720"></canvas>
+    <div id="vignette"></div>
+
+    <div id="title-overlay">
+      <div class="badge">Happy Birthday, Gungun</div>
+      <h1>A Meal Made With Love</h1>
+      <p class="subtitle">
+        A homemade feast, an unfinished love letter, and a feeling that couldn't quite fit into words.
+      </p>
+      <button id="play-start-btn">&#9654; Play Film</button>
+    </div>
+
+    <div id="ending-bar">
+      <span>For Bubu &mdash; made with every little effort.</span>
+      <button class="ctrl-btn" id="replay-end-btn">Replay</button>
+    </div>
+
+    <div id="controls">
+      <button class="ctrl-btn" id="play-pause-btn">Pause</button>
+      <button class="ctrl-btn" id="mute-btn">Sound: On</button>
+      <input id="scrubber" type="range" min="0" max="128" step="0.1" value="0" />
+      <span id="scene-label">1. Preparing Dumplings</span>
+      <span id="time-label">0:00 / 2:08</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CONSTANTS & TIMELINE
+  // =========================================================================
+  const W = 320;
+  const H = 180;
+  const TOTAL_DURATION = 128.0;
+
+  const SCENES = [
+    { id: 1, start: 0,   end: 24,  name: '1. Preparing Dumplings' },
+    { id: 2, start: 24,  end: 46,  name: '2. Preparing Sushi' },
+    { id: 3, start: 46,  end: 66,  name: '3. Crispy Fried Chicken' },
+    { id: 4, start: 66,  end: 78,  name: '4. Assembling Her Tiffin' },
+    { id: 5, start: 78,  end: 106, name: '5. The Handwritten Letter' },
+    { id: 6, start: 106, end: 115, name: '6. The Interruption' },
+    { id: 7, start: 115, end: 128, name: '7. The Letter Reaches Her' },
+  ];
+
+  const LETTER_LINES = [
+    'Hi, Gungun.',
+    '',
+    "When I think of u, idk why my pain disappears, there's just",
+    'something about u that only the thought of u makes me sedated.',
+    '',
+    "It's been so long that we've met, talked about each other's",
+    'laughs, about how much we love each other.',
+    '',
+    "I know u are disappointed from me. I wasn't the perfect bf,",
+    "messed up at times, wasn't upto your expectations.",
+    '',
+    "There's no point of giving excuses as I know the ultimate goal",
+    'of my life is supposed to make u happy and comfortable,',
+    'not just having the intentions to do so.',
+    '',
+    "So from the bottom of my heart, I'm SORRY dear BUBU, u deserve",
+    "the best in the world, and I'm trying to give you the best,",
+    'just not so capable yet...',
+    '',
+    "Hopefully, you'll understand. Thanks for being in my life",
+    'and making it colourful.',
+    '',
+    'I Lo....'
+  ];
+
+  const FULL_LETTER_CHARS = LETTER_LINES.reduce((acc, l) => acc + l.length + 1, 0);
+
+  // =========================================================================
+  // DOM & CANVASES
+  // =========================================================================
+  const pCanvas = document.getElementById('pixel-canvas');
+  const ctx = pCanvas.getContext('2d', { alpha: false });
+  ctx.imageSmoothingEnabled = false;
+
+  const lCanvas = document.getElementById('letter-canvas');
+  const lCtx = lCanvas.getContext('2d');
+
+  const titleOverlay = document.getElementById('title-overlay');
+  const playStartBtn = document.getElementById('play-start-btn');
+  const playPauseBtn = document.getElementById('play-pause-btn');
+  const muteBtn = document.getElementById('mute-btn');
+  const scrubber = document.getElementById('scrubber');
+  const sceneLabel = document.getElementById('scene-label');
+  const timeLabel = document.getElementById('time-label');
+  const controls = document.getElementById('controls');
+  const endingBar = document.getElementById('ending-bar');
+  const replayEndBtn = document.getElementById('replay-end-btn');
+
+  // =========================================================================
+  // STATE
+  // =========================================================================
+  let t = 0;
+  let playing = false;
+  let started = false;
+  let muted = false;
+  let lastFrameMs = performance.now();
+  let lastBeepStep = -1;
+  let doorbellPlayed = false;
+  let windPlayed = false;
+  let latchPlayed = false;
+
+  // =========================================================================
+  // MATH & PIXEL HELPERS
+  // =========================================================================
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, u) => a + (b - a) * clamp(u, 0, 1);
+  const smoothstep = (a, b, x) => {
+    const u = clamp((x - a) / (b - a), 0, 1);
+    return u * u * (3 - 2 * u);
+  };
+  const hash = (n) => {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+
+  function pxRect(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  }
+
+  function pxCircle(cx, cy, r, color) {
+    ctx.fillStyle = color;
+    const x0 = Math.round(cx), y0 = Math.round(cy), rr = Math.round(r);
+    for (let dy = -rr; dy <= rr; dy++) {
+      for (let dx = -rr; dx <= rr; dx++) {
+        if (dx * dx + dy * dy <= rr * rr) {
+          ctx.fillRect(x0 + dx, y0 + dy, 1, 1);
+        }
+      }
+    }
+  }
+
+  function pxEllipse(cx, cy, rx, ry, color) {
+    ctx.fillStyle = color;
+    const x0 = Math.round(cx), y0 = Math.round(cy);
+    const irx = Math.round(rx), iry = Math.round(ry);
+    if (irx <= 0 || iry <= 0) return;
+    for (let dy = -iry; dy <= iry; dy++) {
+      for (let dx = -irx; dx <= irx; dx++) {
+        if ((dx * dx) / (irx * irx) + (dy * dy) / (iry * iry) <= 1) {
+          ctx.fillRect(x0 + dx, y0 + dy, 1, 1);
+        }
+      }
+    }
+  }
+
+  function pxLine(x0, y0, x1, y1, color) {
+    ctx.fillStyle = color;
+    let ix0 = Math.round(x0), iy0 = Math.round(y0);
+    const ix1 = Math.round(x1), iy1 = Math.round(y1);
+    const dx = Math.abs(ix1 - ix0), sx = ix0 < ix1 ? 1 : -1;
+    const dy = -Math.abs(iy1 - iy0), sy = iy0 < iy1 ? 1 : -1;
+    let err = dx + dy;
+    while (true) {
+      ctx.fillRect(ix0, iy0, 1, 1);
+      if (ix0 === ix1 && iy0 === iy1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; ix0 += sx; }
+      if (e2 <= dx) { err += dx; iy0 += sy; }
+    }
+  }
+
+  function pxText(str, x, y, color, align = 'left') {
+    ctx.fillStyle = color;
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = align;
+    ctx.fillText(str, Math.round(x), Math.round(y));
+  }
+
+  // =========================================================================
+  // PROCEDURAL WEB AUDIO ENGINE
+  // =========================================================================
+  let audioCtx = null;
+  let masterGain = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = muted ? 0 : 0.35;
+    masterGain.connect(audioCtx.destination);
+  }
+
+  function setMute(m) {
+    muted = m;
+    muteBtn.textContent = muted ? 'Sound: Off' : 'Sound: On';
+    if (masterGain && audioCtx) {
+      masterGain.gain.setTargetAtTime(muted ? 0 : 0.35, audioCtx.currentTime, 0.05);
+    }
+  }
+
+  function playNote(freq, dur, type = 'triangle', vol = 0.09, attack = 0.03) {
+    if (!audioCtx || muted || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1800;
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(vol, now + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    osc.connect(filter);
+    filter.connect(g);
+    g.connect(masterGain);
+    osc.start(now);
+    osc.stop(now + dur + 0.05);
+  }
+
+  function playNoiseBurst(dur, freq, q, vol = 0.06) {
+    if (!audioCtx || muted || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime;
+    const len = Math.floor(audioCtx.sampleRate * dur);
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = freq;
+    filter.Q.value = q;
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(vol, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(masterGain);
+    src.start(now);
+  }
+
+  function playDoorbell() {
+    if (!audioCtx || muted || audioCtx.state !== 'running') return;
+    playNote(659.25, 0.7, 'sine', 0.22, 0.01); // E5
+    setTimeout(() => playNote(523.25, 1.1, 'sine', 0.22, 0.01), 240); // C5
+  }
+
+  const CHORDS = [
+    [174.61, 220.00, 261.63, 329.63], // Fmaj7
+    [164.81, 196.00, 246.94, 293.66], // Em7
+    [146.83, 174.61, 220.00, 261.63], // Dm7
+    [130.81, 164.81, 196.00, 246.94], // Cmaj7
+  ];
+  const MELODY = [523.25, 587.33, 659.25, 523.25, 440.00, 493.88, 523.25, 392.00];
+
+  function updateAudioForTime(nowT) {
+    if (!audioCtx || !playing || audioCtx.state !== 'running') return;
+
+    // Gentle beat every 0.5s
+    const step = Math.floor(nowT * 2);
+    if (step !== lastBeepStep) {
+      lastBeepStep = step;
+      const inInterruption = nowT >= 106.0 && nowT < 109.0;
+      if (!inInterruption) {
+        if (step % 4 === 0) {
+          const chord = CHORDS[Math.floor(step / 4) % CHORDS.length];
+          const vol = nowT >= 78 ? 0.055 : 0.07;
+          chord.forEach((f, idx) => {
+            setTimeout(() => playNote(f, 1.8, 'sine', vol, 0.05), idx * 45);
+          });
+        }
+        if (step % 2 === 1 && nowT < 122) {
+          const m = MELODY[step % MELODY.length];
+          playNote(m, 0.55, 'triangle', nowT >= 78 ? 0.04 : 0.055, 0.02);
+        }
+      }
+
+      // Contextual Foley SFX
+      if (nowT >= 9.5 && nowT <= 13.0) {
+        playNoiseBurst(0.06, 1400, 2.5, 0.05); // chopping herbs
+      }
+      if (nowT >= 20.0 && nowT <= 23.5) {
+        playNoiseBurst(0.25, 2400, 0.9, 0.025); // steam hiss
+      }
+      if (nowT >= 26.0 && nowT <= 28.0) {
+        playNoiseBurst(0.05, 1900, 3.0, 0.04); // slicing fish
+      }
+      if (nowT >= 54.0 && nowT <= 59.5) {
+        playNoiseBurst(0.35, 3200, 0.7, 0.055); // hot oil sizzle
+      }
+      if (nowT >= 80.5 && nowT <= 105.5) {
+        playNoiseBurst(0.03, 2800, 4.0, 0.018); // soft pen scratch
+      }
+    }
+
+    if (nowT >= 72.2 && nowT < 72.6 && !latchPlayed) {
+      latchPlayed = true;
+      playNoiseBurst(0.05, 900, 3.0, 0.08);
+    }
+    if (nowT >= 106.0 && nowT < 106.5 && !doorbellPlayed) {
+      doorbellPlayed = true;
+      playDoorbell();
+    }
+    if (nowT >= 108.8 && nowT < 109.5 && !windPlayed) {
+      windPlayed = true;
+      playNoiseBurst(1.6, 520, 1.2, 0.07);
+    }
+  }
+
+  // =========================================================================
+  // SHARED PIXEL-ART CHARACTER & KITCHEN ENVIRONMENT
+  // =========================================================================
+  function drawKitchenBackground(panX = 0, warmBoost = 0) {
+    // Wall & tiles
+    pxRect(0, 0, W, 118, '#3b2d38');
+    // Subtle tiled backsplash
+    for (let y = 52; y < 116; y += 10) {
+      for (let x = -((panX | 0) % 16); x < W; x += 16) {
+        pxRect(x, y, 15, 9, '#493845');
+        pxRect(x, y, 15, 1, '#584452');
+      }
+    }
+
+    // Window in background (left-ish)
+    const wx = 22 - panX * 0.4;
+    if (wx > -70 && wx < W + 20) {
+      pxRect(wx, 14, 58, 52, '#241a24');
+      pxRect(wx + 3, 17, 52, 46, '#f6c28b'); // warm sky
+      pxRect(wx + 3, 17, 52, 22, '#f9d7a7');
+      // Window bars
+      pxRect(wx + 28, 17, 2, 46, '#3a2832');
+      pxRect(wx + 3, 39, 52, 2, '#3a2832');
+      // Sunbeam
+      ctx.fillStyle = `rgba(255, 225, 170, ${0.08 + warmBoost})`;
+      ctx.beginPath();
+      ctx.moveTo(wx + 3, 63);
+      ctx.lineTo(wx + 55, 63);
+      ctx.lineTo(wx + 90, 145);
+      ctx.lineTo(wx + 12, 145);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Hanging shelf & jars
+    const sx = 120 - panX * 0.6;
+    pxRect(sx, 26, 96, 4, '#6e473b');
+    pxRect(sx + 8, 12, 12, 14, '#d9cfc1'); // jar
+    pxRect(sx + 9, 10, 10, 2, '#9b6b43');
+    pxRect(sx + 26, 15, 10, 11, '#82a67d'); // herb pot
+    pxRect(sx + 28, 8, 6, 7, '#5c8a56');
+    pxRect(sx + 50, 11, 14, 15, '#c97a63'); // spice jar
+    pxRect(sx + 72, 14, 12, 12, '#e6b87d'); // oil bottle
+
+    // Countertop
+    pxRect(0, 116, W, 6, '#e7d5be');
+    pxRect(0, 122, W, 58, '#c99c72');
+    pxRect(0, 122, W, 2, '#b0825a');
+    // Wood grain lines
+    for (let i = 0; i < 6; i++) {
+      pxRect((i * 58 - (panX | 0)) % W, 134 + (i % 3) * 14, 24, 1, '#b6875d');
+    }
+  }
+
+  function drawChef(cx, cy, armLAngle, armRAngle, headTilt = 0, lookDir = 0) {
+    // Torso (apron over cozy sweater)
+    pxRect(cx - 14, cy + 16, 28, 30, '#4f6d7a'); // sweater
+    pxRect(cx - 10, cy + 18, 20, 28, '#f4e8d8'); // apron
+    pxRect(cx - 10, cy + 16, 2, 6, '#d9cbb8');  // apron strap
+    pxRect(cx + 8, cy + 16, 2, 6, '#d9cbb8');
+    // Little heart stitched on apron
+    pxRect(cx - 2, cy + 25, 2, 2, '#e06b6b');
+    pxRect(cx + 1, cy + 25, 2, 2, '#e06b6b');
+    pxRect(cx - 1, cy + 27, 3, 2, '#e06b6b');
+
+    // Head
+    const hx = cx + headTilt;
+    const hy = cy;
+    pxRect(hx - 9, hy - 2, 18, 18, '#f0bfa0'); // face
+    pxRect(hx - 10, hy - 5, 20, 7, '#271e29'); // hair top
+    pxRect(hx - 10, hy - 2, 3, 9, '#271e29'); // hair left
+    pxRect(hx + 7, hy - 2, 3, 9, '#271e29');  // hair right
+    // Eyes
+    const ex = lookDir * 2;
+    pxRect(hx - 5 + ex, hy + 5, 2, 3, '#1d1620');
+    pxRect(hx + 3 + ex, hy + 5, 2, 3, '#1d1620');
+    // Warm blush
+    pxRect(hx - 7 + ex, hy + 9, 3, 2, '#e89082');
+    pxRect(hx + 4 + ex, hy + 9, 3, 2, '#e89082');
+    // Smile
+    pxRect(hx - 2 + ex, hy + 11, 4, 1, '#9c564a');
+
+    // Arms & hands reaching forward onto counter
+    const lx = cx - 15 + Math.sin(armLAngle) * 5;
+    const ly = cy + 32 + Math.cos(armLAngle) * 3;
+    pxLine(cx - 12, cy + 20, lx, ly, '#4f6d7a');
+    pxLine(cx - 11, cy + 20, lx + 1, ly, '#4f6d7a');
+    pxCircle(lx, ly, 3, '#f0bfa0');
+
+    const rx = cx + 15 + Math.sin(armRAngle) * 5;
+    const ry = cy + 32 + Math.cos(armRAngle) * 3;
+    pxLine(cx + 12, cy + 20, rx, ry, '#4f6d7a');
+    pxLine(cx + 11, cy + 20, rx - 1, ry, '#4f6d7a');
+    pxCircle(rx, ry, 3, '#f0bfa0');
+  }
+
+  function drawSteam(x, y, count, time, spread = 12) {
+    for (let i = 0; i < count; i++) {
+      const phase = (time * 0.7 + i * 0.27) % 1;
+      const sx = x + Math.sin(time * 2 + i * 1.9) * (spread * 0.4) + (i - count / 2) * 3;
+      const sy = y - phase * 28;
+      const alpha = (1 - phase) * 0.55;
+      ctx.fillStyle = `rgba(255, 250, 245, ${alpha})`;
+      const size = phase < 0.5 ? 3 : 2;
+      ctx.fillRect(Math.round(sx), Math.round(sy), size, size);
+    }
+  }
+
+  // =========================================================================
+  // SCENE 1: PREPARING THE DUMPLINGS (0s - 24s)
+  // =========================================================================
+  function renderScene1(lt) {
+    drawKitchenBackground(0, 0.04);
+
+    // Chef standing behind counter
+    const bob = Math.sin(lt * 4) * 1.5;
+    const armSpeed = lt > 6 && lt < 17 ? lt * 8 : lt * 3;
+    drawChef(160, 74 + Math.abs(bob) * 0.4, armSpeed, -armSpeed + 1.2, Math.sin(lt * 1.5) * 1);
+
+    // Cutting board / prep mat
+    pxRect(92, 128, 136, 36, '#deb887');
+    pxRect(92, 162, 136, 3, '#b88d5c');
+
+    // Flour jar & water pitcher on left
+    pxRect(26, 122, 22, 26, '#efe9df');
+    pxRect(28, 118, 18, 4, '#a87449');
+    pxText('FLOUR', 37, 138, '#9b8b7a', 'center');
+
+    pxRect(54, 126, 16, 22, '#99c9e8'); // water pitcher
+    pxRect(56, 128, 12, 16, '#bce2f7');
+
+    // 0-3.5s: Pouring flour into mixing bowl
+    if (lt < 6.0) {
+      // Mixing bowl
+      pxEllipse(160, 146, 22, 9, '#d66853');
+      pxEllipse(160, 143, 20, 6, '#f4ede2');
+
+      if (lt >= 1.5 && lt < 4.2) {
+        // Pouring flour stream + dust
+        const pour = Math.sin((lt - 1.5) * 6) * 2;
+        pxRect(156 + pour, 116, 5, 26, '#fffaf0');
+        for (let i = 0; i < 12; i++) {
+          const px = 148 + hash(i + Math.floor(lt * 10)) * 24;
+          const py = 132 + hash(i * 3 + Math.floor(lt * 10)) * 14;
+          pxRect(px, py, 2, 2, '#fffdf7');
+        }
+      }
+      if (lt >= 3.8 && lt < 6.0) {
+        // Water pouring
+        pxLine(142, 118, 156, 142, '#9cd6f5');
+        pxLine(143, 118, 157, 142, '#d6f2ff');
+      }
+      pxText('1. Mixing flour & water', 160, 173, '#f7e4cf', 'center');
+    }
+    // 6-9.5s: Kneading smooth elastic dough & dividing into portions
+    else if (lt < 9.5) {
+      // Flour dusting on board
+      for (let i = 0; i < 20; i++) {
+        pxRect(110 + hash(i * 7) * 95, 134 + hash(i * 11) * 22, 2, 1, '#fff6e8');
+      }
+      if (lt < 8.0) {
+        const squish = Math.sin(lt * 10) * 3;
+        pxEllipse(160, 146, 18 + squish, 10 - squish * 0.4, '#f7ebd4');
+        pxEllipse(158, 143, 12 + squish * 0.5, 6, '#fff7e8');
+        pxText('Kneading elastic dough...', 160, 173, '#f7e4cf', 'center');
+      } else {
+        // Divided into small portions
+        for (let i = 0; i < 5; i++) {
+          pxCircle(124 + i * 18, 146, 5, '#f7ebd4');
+          pxCircle(123 + i * 18, 144, 2, '#fff9ee');
+        }
+        pxText('Dividing dough portions', 160, 173, '#f7e4cf', 'center');
+      }
+    }
+    // 9.5-13.5s: Chopping herbs & mixing minced chicken stuffing
+    else if (lt < 13.5) {
+      // Minced chicken bowl
+      pxEllipse(188, 146, 18, 8, '#7aa095');
+      pxEllipse(188, 144, 15, 5, '#e89d8b'); // chicken filling
+      // Herbs & aromatics on left of board
+      for (let i = 0; i < 14; i++) {
+        pxRect(118 + hash(i * 5) * 24, 140 + hash(i * 9) * 12, 2, 2, i % 3 === 0 ? '#f5efe0' : '#5ca355');
+      }
+      // Chopping knife animation
+      const chopY = Math.abs(Math.sin(lt * 18)) * 8;
+      pxRect(126, 132 - chopY, 14, 5, '#cfd8dc');
+      pxRect(140, 132 - chopY, 7, 3, '#5c3d2e');
+      pxText('Chopping herbs & mixing chicken filling', 160, 173, '#f7e4cf', 'center');
+    }
+    // 13.5-17s: Rolling circular wrappers & folding pleats by hand
+    else if (lt < 17.0) {
+      // Circular wrappers
+      pxEllipse(122, 146, 12, 6, '#f9eed9');
+      pxEllipse(122, 146, 5, 3, '#e38d7b'); // filling in center
+
+      // Rolling pin
+      pxRect(104, 133, 30, 4, '#b87d4b');
+      // Folded pleated dumplings
+      const foldedCount = Math.min(4, Math.floor((lt - 13.5) * 1.3) + 1);
+      for (let i = 0; i < foldedCount; i++) {
+        const dx = 154 + i * 16;
+        pxEllipse(dx, 147, 7, 5, '#f7ebd4');
+        // Pleats on top
+        pxRect(dx - 4, 142, 1, 2, '#d8c3a5');
+        pxRect(dx - 1, 141, 1, 2, '#d8c3a5');
+        pxRect(dx + 2, 142, 1, 2, '#d8c3a5');
+      }
+      pxText('Rolling wrappers & folding pleats', 160, 173, '#f7e4cf', 'center');
+    }
+    // 17-24s: Arranging in bamboo steamer & steaming glossy dumplings
+    else {
+      // Bamboo steamer on right-center
+      const sx = 160, sy = 144;
+      pxEllipse(sx, sy + 6, 30, 12, '#b9834f');
+      pxRect(sx - 30, sy - 6, 60, 12, '#cfa06b');
+      pxEllipse(sx, sy - 6, 30, 11, '#7a5230'); // interior
+      // Dumplings arranged inside
+      const spots = [[-14, -7], [0, -10], [14, -7], [-8, -2], [8, -2]];
+      spots.forEach(([ox, oy]) => {
+        pxEllipse(sx + ox, sy + oy, 6, 4, '#fff4df');
+        pxRect(sx + ox - 2, sy + oy - 2, 3, 1, '#ffffff'); // glossy sheen!
+      });
+
+      // Steamer lid closes (18.5-21.5s), then lifts (21.5-24s)
+      let lidOffset = 0;
+      if (lt < 18.5) lidOffset = -28 * (1 - smoothstep(17, 18.5, lt));
+      else if (lt > 21.5) lidOffset = -32 * smoothstep(21.5, 23.0, lt);
+
+      if (lt >= 17.5 && lt <= 22.8) {
+        pxEllipse(sx, sy - 10 + lidOffset, 31, 11, '#d9aa73');
+        pxEllipse(sx, sy - 13 + lidOffset, 28, 9, '#c4925a');
+        pxRect(sx - 5, sy - 17 + lidOffset, 10, 3, '#8f5f34');
+      }
+      if (lt >= 18.5) {
+        drawSteam(sx, sy - 14, 10, lt, 26);
+      }
+      pxText(lt > 21.8 ? 'Glossy steamed dumplings!' : 'Steaming in bamboo basket...', 160, 173, '#f7e4cf', 'center');
+    }
+  }
+
+  // =========================================================================
+  // SCENE 2: PREPARING THE SUSHI (24s - 46s)
+  // =========================================================================
+  function renderScene2(lt) {
+    drawKitchenBackground(35, 0.03);
+    const armSpeed = lt * 4.5;
+    drawChef(160, 74, armSpeed, -armSpeed + 0.8, Math.sin(lt * 1.2) * 1);
+
+    // Hinoki wooden sushi board
+    pxRect(78, 127, 164, 38, '#ead0a8');
+    pxRect(78, 163, 164, 3, '#c4a476');
+
+    // 24-28.5s: Slicing fresh salmon with sharp knife & curing
+    if (lt < 4.5) {
+      // Salmon fillet
+      pxRect(118, 138, 44, 14, '#f27961');
+      // White fat marbling lines
+      for (let x = 122; x < 158; x += 6) {
+        pxLine(x, 139, x + 3, 151, '#ffd0c4');
+      }
+      // Sharp knife slicing cleanly
+      const sliceX = 126 + ((lt * 10) % 30);
+      const sliceY = Math.sin(lt * 10) * 4;
+      pxRect(sliceX, 128 + sliceY, 3, 18, '#e3edf2');
+      pxRect(sliceX, 122 + sliceY, 4, 6, '#382a24');
+      // Curing salt/seasoning shimmer
+      if (lt > 2.5) {
+        for (let i = 0; i < 10; i++) {
+          pxRect(120 + hash(i * 13) * 38, 140 + hash(i * 17) * 10, 1, 1, '#ffffff');
+        }
+      }
+      pxText('Slicing & curing fresh salmon', 160, 173, '#f7e4cf', 'center');
+    }
+    // 28.5-33s: Washing, cooking & seasoning sushi rice + steaming rice cakes
+    else if (lt < 9.0) {
+      // Left: Bowl of sushi rice being washed & seasoned
+      pxEllipse(124, 146, 20, 9, '#486581');
+      pxEllipse(124, 143, 17, 6, lt < 6.0 ? '#cfe8f7' : '#ffffff');
+      if (lt < 6.0) {
+        // Swirling water
+        const sx = 124 + Math.cos(lt * 8) * 8;
+        const sy = 143 + Math.sin(lt * 8) * 3;
+        pxRect(sx, sy, 4, 2, '#ffffff');
+      } else {
+        // Rice grains + gentle steam
+        drawSteam(124, 136, 5, lt, 10);
+      }
+
+      // Right: Steaming rice cakes
+      pxEllipse(196, 148, 22, 8, '#8d6e63');
+      for (let i = 0; i < 3; i++) {
+        pxEllipse(184 + i * 12, 144, 6, 4, '#fff8f0');
+      }
+      drawSteam(196, 136, 7, lt + 0.5, 16);
+      pxText('Seasoning sushi rice & steaming rice cakes', 160, 173, '#f7e4cf', 'center');
+    }
+    // 33-40s: Spreading rice on nori, arranging fish, rolling bamboo mat
+    else if (lt < 16.0) {
+      // Bamboo rolling mat (makisu)
+      pxRect(114, 132, 92, 28, '#cfa468');
+      for (let y = 134; y < 160; y += 3) {
+        pxRect(114, y, 92, 1, '#b5874c');
+      }
+
+      if (lt < 13.0) {
+        // Nori seaweed sheet
+        pxRect(122, 135, 76, 22, '#1f3628');
+        // Rice spread gradually
+        const spreadW = Math.min(72, (lt - 9.0) * 28);
+        pxRect(124, 137, spreadW, 18, '#faf6ee');
+        if (lt > 11.2) {
+          // Salmon + avocado + cucumber strips
+          pxRect(126, 143, 68, 4, '#f27961');
+          pxRect(126, 148, 68, 3, '#72b059');
+        }
+        pxText('Spreading rice & filling on nori', 160, 173, '#f7e4cf', 'center');
+      } else {
+        // Rolling tightly!
+        const rollProgress = smoothstep(13.0, 15.8, lt);
+        const h = lerp(22, 10, rollProgress);
+        pxRect(122, 146 - h / 2, 76, h, '#243d2e');
+        pxRect(122, 146 - h / 2 + 2, 76, 2, '#355742');
+        pxText('Rolling tightly with bamboo mat', 160, 173, '#f7e4cf', 'center');
+      }
+    }
+    // 40-46s: Cutting sushi roll & arranging neatly on serving plate
+    else {
+      if (lt < 19.0) {
+        // Slicing roll into neat pieces
+        for (let i = 0; i < 6; i++) {
+          const rx = 118 + i * 14;
+          pxRect(rx, 140, 11, 12, '#1f3628');
+          pxRect(rx + 2, 142, 7, 8, '#faf6ee');
+          pxRect(rx + 4, 144, 3, 4, '#f27961');
+        }
+        const kx = 128 + Math.floor((lt - 16.0) * 2) * 14;
+        pxRect(kx, 129, 2, 18, '#e3edf2');
+        pxText('Cutting into neat, even pieces', 160, 173, '#f7e4cf', 'center');
+      } else {
+        // Ceramic serving plate with arranged sushi & rice cakes
+        pxRect(102, 132, 116, 28, '#2b394a');
+        pxRect(105, 134, 110, 24, '#36495e');
+        for (let i = 0; i < 6; i++) {
+          const sx = 114 + (i % 3) * 18;
+          const sy = 138 + Math.floor(i / 3) * 11;
+          pxCircle(sx, sy + 3, 5, '#1f3628');
+          pxCircle(sx, sy + 3, 4, '#faf6ee');
+          pxCircle(sx, sy + 3, 2, '#f27961');
+        }
+        // Rice cakes neatly plated on right side
+        for (let i = 0; i < 3; i++) {
+          pxEllipse(178 + i * 10, 146, 4, 6, '#fff8f0');
+        }
+        pxText('Sushi & rice cakes plated!', 160, 173, '#f7e4cf', 'center');
+      }
+    }
+  }
+
+  // =========================================================================
+  // SCENE 3: PREPARING CRISPY FRIED CHICKEN (46s - 66s)
+  // =========================================================================
+  function renderScene3(lt) {
+    drawKitchenBackground(70, 0.06);
+    drawChef(160, 74, lt * 5, -lt * 5 + 1.0, Math.sin(lt * 1.4) * 1);
+
+    // 46-50s: Marinating chicken pieces with spices
+    if (lt < 4.0) {
+      pxEllipse(160, 146, 30, 12, '#d8c5b4');
+      // Drumsticks
+      for (let i = 0; i < 3; i++) {
+        const cx = 144 + i * 16;
+        pxEllipse(cx, 144, 7, 5, lt > 2 ? '#d66847' : '#f2c1b0');
+        pxRect(cx + 5, 143, 5, 2, '#f5efe6');
+      }
+      // Spice sprinkle particles
+      if (lt > 1.0 && lt < 3.5) {
+        for (let i = 0; i < 16; i++) {
+          const sx = 136 + hash(i + Math.floor(lt * 12)) * 48;
+          const sy = 122 + ((lt * 35 + i * 7) % 24);
+          pxRect(sx, sy, 2, 2, i % 2 === 0 ? '#c93b2b' : '#e09f3e');
+        }
+      }
+      pxText('Marinating chicken with spices', 160, 173, '#f7e4cf', 'center');
+    }
+    // 50-54s: Pressing seasoned flour onto chicken for crispy irregular crust
+    else if (lt < 8.0) {
+      // Flour tray
+      pxRect(112, 132, 96, 30, '#d8d2c7');
+      pxRect(116, 135, 88, 24, '#f5ebd8');
+      // Chicken being pressed into flour
+      const press = Math.abs(Math.sin(lt * 7)) * 3;
+      pxEllipse(160, 146 + press, 14, 9, '#f0d8b8');
+      pxEllipse(156, 144 + press, 6, 4, '#fff4df');
+      pxRect(172, 145 + press, 7, 3, '#fff6e8');
+      // Irregular crust bumps
+      pxRect(148, 141 + press, 3, 3, '#e6c89c');
+      pxRect(162, 148 + press, 4, 3, '#e6c89c');
+      pxText('Pressing seasoned flour for crispy crust', 160, 173, '#f7e4cf', 'center');
+    }
+    // 54-60s: Lowering into hot oil, bubbling & golden-brown transformation
+    else if (lt < 14.0) {
+      // Deep fryer pot
+      pxRect(108, 124, 104, 42, '#4a4e59');
+      pxRect(112, 127, 96, 34, '#e39e2b'); // hot golden oil
+
+      // Color shifts from pale flour -> rich golden brown!
+      const brownU = smoothstep(8.5, 13.5, lt);
+      const r = Math.round(lerp(240, 198, brownU));
+      const g = Math.round(lerp(215, 112, brownU));
+      const b = Math.round(lerp(175, 42, brownU));
+      const chickCol = `rgb(${r},${g},${b})`;
+
+      const bob = Math.sin(lt * 9) * 1.5;
+      for (let i = 0; i < 3; i++) {
+        const cx = 132 + i * 28;
+        pxEllipse(cx, 143 + bob, 10, 7, chickCol);
+        pxRect(cx - 5, 139 + bob, 3, 3, '#d98a36');
+      }
+
+      // Bubbling oil particles!
+      for (let i = 0; i < 22; i++) {
+        const bx = 116 + hash(i * 11 + Math.floor(lt * 14)) * 88;
+        const by = 128 + hash(i * 19 + Math.floor(lt * 14)) * 28;
+        pxCircle(bx, by, i % 3 === 0 ? 2 : 1, '#ffe48f');
+      }
+      drawSteam(160, 122, 8, lt, 44);
+      pxText('Sizzling in hot oil -> golden brown!', 160, 173, '#f7e4cf', 'center');
+    }
+    // 60-66s: Lifting onto wire rack to drain, crunchy exterior reveal
+    else {
+      // Wire cooling rack
+      pxRect(104, 136, 112, 24, '#7d8590');
+      pxRect(106, 138, 108, 20, '#3a3038');
+      for (let x = 112; x < 212; x += 8) {
+        pxRect(x, 138, 1, 20, '#9aa2ad');
+      }
+      // Crispy golden fried chicken pieces
+      for (let i = 0; i < 3; i++) {
+        const cx = 128 + i * 32;
+        pxEllipse(cx, 146, 12, 8, '#c86e28');
+        pxEllipse(cx - 2, 144, 7, 4, '#e6933c'); // crunchy highlight
+        pxRect(cx + 8, 145, 7, 3, '#f7efe4');  // bone tip
+        // Irregular crispy flakes
+        pxRect(cx - 7, 141, 3, 2, '#f2ad4e');
+        pxRect(cx + 1, 149, 3, 2, '#a35118');
+      }
+      drawSteam(160, 132, 6, lt, 34);
+      pxText('Crunchy, golden & juicy!', 160, 173, '#f7e4cf', 'center');
+    }
+  }
+
+  // =========================================================================
+  // SCENE 4: ASSEMBLING HER TIFFIN (66s - 78s)
+  // =========================================================================
+  function renderScene4(lt) {
+    drawKitchenBackground(95, 0.05);
+    const look = lt > 9.0 ? 1 : 0;
+    drawChef(160, 74, lt < 6 ? lt * 4 : 0, lt < 6 ? -lt * 4 : 0, 0, look);
+
+    // Tiffin / Bento box centered on counter
+    const bx = 110, by = 126, bw = 100, bh = 38;
+    pxRect(bx, by, bw, bh, '#d9534f'); // warm red-coral tiffin
+    pxRect(bx + 3, by + 3, bw - 6, bh - 6, '#362933');
+
+    if (lt < 6.2) {
+      // Compartments
+      pxRect(bx + 6, by + 6, 42, 14, '#4a3a46');  // top-left: dumplings
+      pxRect(bx + 52, by + 6, 42, 14, '#4a3a46'); // top-right: sushi
+      pxRect(bx + 6, by + 23, 88, 10, '#4a3a46'); // bottom: fried chicken + rice cakes
+
+      // Items placed one by one
+      if (lt > 0.6) {
+        for (let i = 0; i < 3; i++) {
+          pxEllipse(bx + 15 + i * 12, by + 13, 5, 3, '#fff4df');
+        }
+      }
+      if (lt > 2.2) {
+        for (let i = 0; i < 3; i++) {
+          pxCircle(bx + 61 + i * 12, by + 13, 4, '#1f3628');
+          pxCircle(bx + 61 + i * 12, by + 13, 2, '#f27961');
+        }
+      }
+      if (lt > 3.8) {
+        pxEllipse(bx + 24, by + 28, 9, 4, '#c86e28');
+        pxEllipse(bx + 48, by + 28, 9, 4, '#c86e28');
+        pxEllipse(bx + 74, by + 28, 6, 3, '#fff8f0'); // rice cake
+        pxEllipse(bx + 86, by + 28, 5, 3, '#fff8f0');
+      }
+      pxText('Packing her tiffin with care...', 160, 173, '#f7e4cf', 'center');
+    } else {
+      // Closed tiffin with lid & heart clasp
+      pxRect(bx, by + 4, bw, bh - 4, '#e3645f');
+      pxRect(bx + 2, by + 6, bw - 4, 8, '#f07b76');
+      pxRect(bx + 44, by + 14, 12, 8, '#f7d08a'); // brass clasp
+
+      if (lt > 8.6) {
+        // Thought bubble: forgot the note!
+        pxCircle(186, 62, 2, '#fff9f0');
+        pxCircle(192, 54, 3, '#fff9f0');
+        pxRect(196, 28, 96, 24, '#fff9f0');
+        pxText('Forgot her note...', 244, 43, '#2d1e28', 'center');
+      }
+      pxText(lt > 8.6 ? 'Wait — I need to write her a note' : 'Tiffin packed!', 160, 173, '#f7e4cf', 'center');
+    }
+  }
+
+  // =========================================================================
+  // SCENE 5 & 6 & 7: ROOM, WINDOW, WIND & HANDWRITTEN LETTER
+  // =========================================================================
+  function drawStudyRoom(lt, globalT) {
+    // Cozy evening study room
+    pxRect(0, 0, W, H, '#1b1522');
+    // Open window on the right
+    const wx = 216, wy = 14, ww = 86, wh = 92;
+    pxRect(wx - 4, wy - 4, ww + 8, wh + 8, '#3b2832');
+    pxRect(wx, wy, ww, wh, '#222b45'); // twilight sky
+    pxRect(wx, wy + 52, ww, 40, '#363b5e');
+    // Stars
+    pxRect(wx + 16, wy + 14, 1, 1, '#fff3cf');
+    pxRect(wx + 58, wy + 22, 1, 1, '#fff3cf');
+    pxRect(wx + 38, wy + 9, 2, 2, '#ffe9a8');
+
+    // Curtain swaying (stronger wind during Scene 6!)
+    const windAmt = globalT >= 108.5 && globalT < 115 ? Math.sin(globalT * 10) * 10 + 10 : Math.sin(globalT * 2) * 2;
+    ctx.fillStyle = '#d9b5a0';
+    ctx.beginPath();
+    ctx.moveTo(wx, wy);
+    ctx.lineTo(wx + 18, wy);
+    ctx.lineTo(wx + 14 - windAmt, wy + wh);
+    ctx.lineTo(wx, wy + wh);
+    ctx.closePath();
+    ctx.fill();
+
+    // Warm desk lamp on left
+    pxRect(22, 92, 16, 4, '#8c6239');
+    pxRect(28, 56, 4, 36, '#8c6239');
+    pxRect(18, 42, 26, 16, '#f4b860');
+    ctx.fillStyle = 'rgba(255, 200, 120, 0.14)';
+    ctx.beginPath();
+    ctx.moveTo(18, 58);
+    ctx.lineTo(44, 58);
+    ctx.lineTo(140, 168);
+    ctx.lineTo(0, 168);
+    ctx.closePath();
+    ctx.fill();
+
+    // Wooden desk
+    pxRect(0, 114, W, 66, '#5c3c2e');
+    pxRect(0, 114, W, 4, '#734b39');
+
+    // Doorbell chime visual at 106.0 - 108.5s
+    if (globalT >= 106.0 && globalT < 108.5) {
+      const p = (globalT - 106.0) * 2;
+      pxText('DING-DONG!', 52, 26, '#ffe58f', 'center');
+      ctx.strokeStyle = `rgba(255, 230, 140, ${clamp(1 - p * 0.4, 0, 1)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(52, 24, 10 + (p * 18) % 24, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Gust of wind streaks in Scene 6
+    if (globalT >= 108.5 && globalT < 115.5) {
+      for (let i = 0; i < 9; i++) {
+        const wyLine = 32 + i * 14;
+        const wxLine = (290 - ((globalT - 108.5) * 140 + i * 37) % 340);
+        pxLine(wxLine, wyLine, wxLine - 28, wyLine + 4, 'rgba(210, 230, 255, 0.45)');
+      }
+    }
+  }
+
+  // =========================================================================
+  // CRISP READABLE HANDWRITTEN LETTER OVERLAY (SCENES 5, 6, 7)
+  // =========================================================================
+  function renderLetterOverlay(globalT) {
+    lCtx.clearRect(0, 0, lCanvas.width, lCanvas.height);
+    if (globalT < 78.0) return;
+
+    const cw = lCanvas.width;
+    const ch = lCanvas.height;
+
+    // Determine how many characters are written so far
+    // Scene 5: 80.0s -> 106.0s writes all characters cleanly
+    let charsToShow = FULL_LETTER_CHARS;
+    if (globalT < 80.0) {
+      charsToShow = 0;
+    } else if (globalT < 106.0) {
+      const u = (globalT - 80.0) / 26.0;
+      charsToShow = Math.floor(u * FULL_LETTER_CHARS);
+    }
+
+    // Compute paper transform:
+    // Scene 5 (78-106s): flat/angled on desk, comfortable close-up
+    // Scene 6 (106-115s): lifts off desk, flutters & drifts out window, then toward camera
+    // Scene 7 (115-128s): approaches lens and lands gently filling almost entire frame!
+    let px = cw * 0.50;
+    let py = ch * 0.54;
+    let scale = 0.86;
+    let rot = -0.02;
+    let alpha = 1;
+
+    if (globalT < 80.0) {
+      alpha = smoothstep(78.0, 79.5, globalT);
+      py = lerp(ch * 0.68, ch * 0.54, alpha);
+    } else if (globalT >= 108.5 && globalT < 115.0) {
+      const u = (globalT - 108.5) / 6.5;
+      // Flutter away toward window then curve back toward camera
+      const arc = Math.sin(u * Math.PI);
+      px = lerp(cw * 0.50, cw * 0.72, arc) + Math.sin(u * 11) * 28;
+      py = lerp(ch * 0.54, ch * 0.34, arc) + Math.cos(u * 9) * 18;
+      scale = lerp(0.86, 0.24, Math.sin(u * Math.PI * 0.85));
+      rot = Math.sin(u * 8) * 0.38;
+    } else if (globalT >= 115.0 && globalT < 119.2) {
+      const u = smoothstep(115.0, 119.2, globalT);
+      px = lerp(cw * 0.62, cw * 0.50, u) + Math.sin(u * 6) * (1 - u) * 30;
+      py = lerp(ch * 0.42, ch * 0.50, u) + Math.cos(u * 5) * (1 - u) * 20;
+      scale = lerp(0.28, 1.04, u);
+      rot = lerp(0.22, 0.0, u);
+    } else if (globalT >= 119.2) {
+      // Resting gently against the camera
+      px = cw * 0.50;
+      py = ch * 0.50;
+      scale = 1.04;
+      rot = 0;
+    }
+
+    lCtx.save();
+    lCtx.globalAlpha = alpha;
+    lCtx.translate(px, py);
+    lCtx.rotate(rot);
+    lCtx.scale(scale, scale);
+
+    const paperW = 760;
+    const paperH = 610;
+    const left = -paperW / 2;
+    const top = -paperH / 2;
+
+    // Paper drop shadow
+    lCtx.fillStyle = 'rgba(10, 6, 14, 0.45)';
+    lCtx.fillRect(left + 12, top + 14, paperW, paperH);
+
+    // Warm cream letter paper
+    lCtx.fillStyle = '#fbf3e4';
+    lCtx.fillRect(left, top, paperW, paperH);
+    lCtx.strokeStyle = '#dfd0b8';
+    lCtx.lineWidth = 3;
+    lCtx.strokeRect(left, top, paperW, paperH);
+
+    // Faint ruled lines for authentic notebook/letter feel
+    lCtx.strokeStyle = 'rgba(180, 198, 218, 0.38)';
+    lCtx.lineWidth = 1;
+    for (let ly = top + 46; ly < top + paperH - 22; ly += 23) {
+      lCtx.beginPath();
+      lCtx.moveTo(left + 28, ly);
+      lCtx.lineTo(left + paperW - 28, ly);
+      lCtx.stroke();
+    }
+
+    // Crisp, readable handwritten-style ink text
+    lCtx.fillStyle = '#242942';
+    lCtx.font = 'italic 18px "Segoe Script", "Brush Script MT", "Comic Sans MS", Georgia, serif';
+    lCtx.textBaseline = 'bottom';
+
+    let remaining = charsToShow;
+    let penX = left + 42;
+    let penY = top + 45;
+    let penActive = false;
+
+    for (let i = 0; i < LETTER_LINES.length; i++) {
+      const line = LETTER_LINES[i];
+      const y = top + 45 + i * 23;
+      if (remaining <= 0) break;
+
+      const slice = line.slice(0, remaining);
+      lCtx.fillText(slice, left + 42, y);
+
+      if (remaining <= line.length && globalT >= 80.0 && globalT < 106.0) {
+        penX = left + 42 + lCtx.measureText(slice).width;
+        penY = y - 2;
+        penActive = true;
+      }
+      remaining -= (line.length + 1);
+    }
+
+    // Draw animated pen & hand while writing (Scene 5)
+    if (penActive) {
+      // Pen nib & barrel
+      lCtx.save();
+      lCtx.translate(penX, penY);
+      lCtx.rotate(-0.45);
+      // Nib
+      lCtx.fillStyle = '#d4af37';
+      lCtx.beginPath();
+      lCtx.moveTo(0, 0);
+      lCtx.lineTo(6, -14);
+      lCtx.lineTo(-4, -14);
+      lCtx.closePath();
+      lCtx.fill();
+      // Pen body
+      lCtx.fillStyle = '#2c2233';
+      lCtx.fillRect(-5, -96, 12, 82);
+      // Hand fingers gripping pen
+      lCtx.fillStyle = '#f0bfa0';
+      lCtx.beginPath();
+      lCtx.ellipse(14, -36, 26, 18, 0.2, 0, Math.PI * 2);
+      lCtx.fill();
+      lCtx.restore();
+    } else if (globalT >= 106.0 && globalT < 107.6) {
+      // Doorbell interruption: pen lifts slightly off the last word!
+      const lift = smoothstep(106.0, 107.0, globalT) * 35;
+      lCtx.save();
+      lCtx.translate(left + 106 + lift, top + 45 + 22 * 23 - lift);
+      lCtx.rotate(-0.65);
+      lCtx.fillStyle = '#2c2233';
+      lCtx.fillRect(-5, -90, 12, 82);
+      lCtx.restore();
+    }
+
+    lCtx.restore();
+  }
+
+  // =========================================================================
+  // MAIN RENDER LOOP
+  // =========================================================================
+  function getScene(nowT) {
+    for (const s of SCENES) {
+      if (nowT >= s.start && nowT < s.end) return s;
+    }
+    return SCENES[SCENES.length - 1];
+  }
+
+  function formatTime(sec) {
+    const s = Math.floor(sec);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${r < 10 ? '0' : ''}${r}`;
+  }
+
+  function renderFrame(nowT) {
+    const s = getScene(nowT);
+    const lt = nowT - s.start;
+
+    if (s.id === 1) renderScene1(lt);
+    else if (s.id === 2) renderScene2(lt);
+    else if (s.id === 3) renderScene3(lt);
+    else if (s.id === 4) renderScene4(lt);
+    else drawStudyRoom(lt, nowT);
+
+    // Smooth cross-fade transitions between scenes 1..5
+    for (const sc of SCENES) {
+      if (sc.id > 1 && sc.id <= 5 && Math.abs(nowT - sc.start) < 0.45) {
+        const fade = 1 - Math.abs(nowT - sc.start) / 0.45;
+        ctx.fillStyle = `rgba(14, 10, 18, ${fade * 0.7})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    renderLetterOverlay(nowT);
+
+    // Update UI
+    sceneLabel.textContent = s.name;
+    scrubber.value = nowT;
+    timeLabel.textContent = `${formatTime(nowT)} / ${formatTime(TOTAL_DURATION)}`;
+
+    if (nowT >= 122.0) {
+      endingBar.classList.add('show');
+    } else {
+      endingBar.classList.remove('show');
+    }
+  }
+
+  function loop(nowMs) {
+    const dt = Math.min(0.1, (nowMs - lastFrameMs) / 1000);
+    lastFrameMs = nowMs;
+
+    if (playing) {
+      t += dt;
+      if (t >= TOTAL_DURATION) {
+        t = TOTAL_DURATION;
+        playing = false;
+        playPauseBtn.textContent = 'Replay';
+      }
+      updateAudioForTime(t);
+    }
+
+    renderFrame(t);
+    requestAnimationFrame(loop);
+  }
+
+  // =========================================================================
+  // CONTROLS & EVENTS
+  // =========================================================================
+  function startFilm() {
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    started = true;
+    playing = true;
+    titleOverlay.classList.add('hidden');
+    playPauseBtn.textContent = 'Pause';
+    controls.classList.add('visible');
+    setTimeout(() => controls.classList.remove('visible'), 2500);
+  }
+
+  function resetFlagsForSeek(newT) {
+    if (newT < 72.2) latchPlayed = false;
+    if (newT < 106.0) doorbellPlayed = false;
+    if (newT < 108.8) windPlayed = false;
+  }
+
+  playStartBtn.addEventListener('click', startFilm);
+
+  playPauseBtn.addEventListener('click', () => {
+    if (!started) { startFilm(); return; }
+    if (t >= TOTAL_DURATION) {
+      t = 0;
+      resetFlagsForSeek(0);
+      playing = true;
+      playPauseBtn.textContent = 'Pause';
+      return;
+    }
+    playing = !playing;
+    playPauseBtn.textContent = playing ? 'Pause' : 'Play';
+  });
+
+  replayEndBtn.addEventListener('click', () => {
+    t = 0;
+    resetFlagsForSeek(0);
+    playing = true;
+    playPauseBtn.textContent = 'Pause';
+  });
+
+  muteBtn.addEventListener('click', () => setMute(!muted));
+
+  scrubber.addEventListener('input', (e) => {
+    t = parseFloat(e.target.value);
+    resetFlagsForSeek(t);
+    renderFrame(t);
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      playPauseBtn.click();
+    }
+  });
+
+  // Render initial preview frame behind title overlay
+  renderFrame(0);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
