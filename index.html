@@ -193,7 +193,7 @@
 <body>
 <div id="stage">
   <div id="frame-wrap">
-    <canvas id="pixel-canvas" width="320" height="180"></canvas>
+    <canvas id="pixel-canvas" width="640" height="360"></canvas>
     <canvas id="letter-canvas" width="1280" height="720"></canvas>
     <div id="vignette"></div>
 
@@ -228,8 +228,8 @@
   // =========================================================================
   // CONSTANTS & TIMELINE
   // =========================================================================
-  const W = 320;
-  const H = 180;
+  const W = 640;
+  const H = 360;
   const TOTAL_DURATION = 128.0;
 
   const SCENES = [
@@ -365,10 +365,12 @@
     }
   }
 
-  function pxText(str, x, y, color, align = 'left') {
-    ctx.fillStyle = color;
-    ctx.font = 'bold 8px monospace';
+  function pxText(str, x, y, color, align = 'left', size = 14) {
+    ctx.font = `bold ${size}px monospace`;
     ctx.textAlign = align;
+    ctx.fillStyle = 'rgba(14, 10, 18, 0.78)';
+    ctx.fillText(str, Math.round(x) + 1, Math.round(y) + 1);
+    ctx.fillStyle = color;
     ctx.fillText(str, Math.round(x), Math.round(y));
   }
 
@@ -512,572 +514,924 @@
   }
 
   // =========================================================================
-  // SHARED PIXEL-ART CHARACTER & KITCHEN ENVIRONMENT
+  // CINEMATIC CAMERA SYSTEM & ATMOSPHERIC HELPERS
   // =========================================================================
-  function drawKitchenBackground(panX = 0, warmBoost = 0) {
-    // Wall & tiles
-    pxRect(0, 0, W, 118, '#3b2d38');
-    // Subtle tiled backsplash
-    for (let y = 52; y < 116; y += 10) {
-      for (let x = -((panX | 0) % 16); x < W; x += 16) {
-        pxRect(x, y, 15, 9, '#493845');
-        pxRect(x, y, 15, 1, '#584452');
+  const easeInOut = (u) => (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
+
+  function withCamera(cx, cy, zoom, rot, drawFn) {
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    if (rot) ctx.rotate(rot);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-cx, -cy);
+    drawFn();
+    ctx.restore();
+  }
+
+  function drawAO(cx, cy, rx, ry, alpha = 0.28) {
+    ctx.fillStyle = `rgba(18, 10, 16, ${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(Math.round(cx), Math.round(cy), Math.round(rx), Math.round(ry), 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawStoveBurner(cx, cy, time, intensity = 1) {
+    // Cast-iron grate & burner ring
+    pxRect(cx - 56, cy + 4, 112, 8, '#232028');
+    pxRect(cx - 48, cy, 96, 6, '#34303b');
+    pxRect(cx - 52, cy - 2, 16, 4, '#474250');
+    pxRect(cx + 36, cy - 2, 16, 4, '#474250');
+    // Flickering gas flames (blue base + orange-gold tips)
+    for (let i = -3; i <= 3; i++) {
+      const fx = cx + i * 11;
+      const flick = Math.sin(time * 22 + i * 2.3) * 3 * intensity;
+      const fh = (8 + flick) * intensity;
+      ctx.fillStyle = 'rgba(70, 175, 255, 0.9)';
+      ctx.fillRect(Math.round(fx - 3), Math.round(cy - fh * 0.5), 6, Math.round(fh * 0.55));
+      ctx.fillStyle = 'rgba(255, 165, 55, 0.92)';
+      ctx.fillRect(Math.round(fx - 2), Math.round(cy - fh), 4, Math.round(fh * 0.65));
+      ctx.fillStyle = 'rgba(255, 235, 140, 0.95)';
+      ctx.fillRect(Math.round(fx - 1), Math.round(cy - fh * 0.8), 2, Math.round(fh * 0.4));
+    }
+    // Warm under-glow
+    const glow = ctx.createRadialGradient(cx, cy - 4, 4, cx, cy - 4, 65 * intensity);
+    glow.addColorStop(0, 'rgba(255, 140, 50, 0.28)');
+    glow.addColorStop(1, 'rgba(255, 140, 50, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - 70, cy - 55, 140, 70);
+  }
+
+  function drawSteam(x, y, count, time, spread = 24, height = 64) {
+    for (let i = 0; i < count; i++) {
+      const phase = (time * 0.55 + i * (1 / count)) % 1;
+      const sway = Math.sin(time * 2.4 + i * 1.7) * (spread * 0.35);
+      const sx = x + sway + (i - count / 2) * (spread / count) * 1.4;
+      const sy = y - phase * height;
+      const alpha = Math.sin(phase * Math.PI) * 0.42;
+      const r = 3 + phase * 6;
+      ctx.fillStyle = `rgba(255, 248, 238, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(Math.round(sx), Math.round(sy), Math.round(r), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawFloatingMotes(time, count = 18, color = 'rgba(255, 236, 195, 0.35)') {
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const mx = (hash(i * 13.7) * W + time * (4 + (i % 3) * 2)) % W;
+      const my = (hash(i * 29.3) * (H - 60) + Math.sin(time * 0.9 + i) * 10);
+      const sz = i % 4 === 0 ? 2 : 1;
+      ctx.fillRect(Math.round(mx), Math.round(my), sz, sz);
+    }
+  }
+
+  // =========================================================================
+  // SHARED PIXEL-ART CHARACTER & KITCHEN ENVIRONMENT (640x360)
+  // =========================================================================
+  function drawKitchenBackground(panX = 0, warmBoost = 0, time = 0) {
+    // Rich warm plaster wall + brick/tile backsplash
+    pxRect(-80, -40, W + 160, 260, '#32242f');
+    pxRect(-80, 100, W + 160, 128, '#3d2d39');
+    for (let y = 104; y < 224; y += 16) {
+      const rowOffset = ((y / 16) | 0) % 2 === 0 ? 0 : 14;
+      for (let x = -80 - ((panX * 0.7) | 0) % 28 + rowOffset; x < W + 80; x += 28) {
+        pxRect(x, y, 26, 14, '#4c3947');
+        pxRect(x, y, 26, 2, '#5e4858');
+        pxRect(x, y + 13, 26, 1, '#31232d');
       }
     }
 
-    // Window in background (left-ish)
-    const wx = 22 - panX * 0.4;
-    if (wx > -70 && wx < W + 20) {
-      pxRect(wx, 14, 58, 52, '#241a24');
-      pxRect(wx + 3, 17, 52, 46, '#f6c28b'); // warm sky
-      pxRect(wx + 3, 17, 52, 22, '#f9d7a7');
-      // Window bars
-      pxRect(wx + 28, 17, 2, 46, '#3a2832');
-      pxRect(wx + 3, 39, 52, 2, '#3a2832');
-      // Sunbeam
-      ctx.fillStyle = `rgba(255, 225, 170, ${0.08 + warmBoost})`;
-      ctx.beginPath();
-      ctx.moveTo(wx + 3, 63);
-      ctx.lineTo(wx + 55, 63);
-      ctx.lineTo(wx + 90, 145);
-      ctx.lineTo(wx + 12, 145);
-      ctx.closePath();
-      ctx.fill();
+    // Hanging warm pendant lamp
+    const lx = 320 - panX * 0.35;
+    pxRect(lx - 1, -20, 2, 42, '#1f171d');
+    pxRect(lx - 18, 22, 36, 10, '#c87e42');
+    pxRect(lx - 22, 30, 44, 5, '#e8a25d');
+    pxRect(lx - 6, 35, 12, 4, '#fff2c2');
+    const lampGlow = ctx.createRadialGradient(lx, 40, 8, lx, 110, 260);
+    lampGlow.addColorStop(0, `rgba(255, 208, 132, ${0.22 + warmBoost})`);
+    lampGlow.addColorStop(1, 'rgba(255, 180, 100, 0)');
+    ctx.fillStyle = lampGlow;
+    ctx.fillRect(-60, 0, W + 120, H);
+
+    // Cozy window on left with lush potted herbs & sunbeam
+    const wx = 38 - panX * 0.45;
+    pxRect(wx - 4, 24, 116, 106, '#231822');
+    pxRect(wx, 28, 108, 98, '#f6b97a');
+    pxRect(wx, 28, 108, 46, '#fbd8a4');
+    // Distant pixel buildings / trees outside window
+    pxRect(wx + 8, 86, 28, 40, '#c48367');
+    pxRect(wx + 44, 76, 36, 50, '#b5725b');
+    pxRect(wx + 84, 90, 20, 36, '#9e6253');
+    // Mullions
+    pxRect(wx + 53, 28, 3, 98, '#36232e');
+    pxRect(wx, 75, 108, 3, '#36232e');
+    // Potted herbs on sill
+    pxRect(wx + 12, 112, 18, 14, '#b86246');
+    pxCircle(wx + 21, 106, 9, '#4c8c4a');
+    pxCircle(wx + 17, 103, 5, '#6cb365');
+    pxRect(wx + 76, 114, 16, 12, '#c88b5a');
+    pxCircle(wx + 84, 109, 7, '#589955');
+    // Diagonal volumetric sunbeam
+    ctx.fillStyle = `rgba(255, 224, 168, ${0.09 + warmBoost * 0.5})`;
+    ctx.beginPath();
+    ctx.moveTo(wx, 126);
+    ctx.lineTo(wx + 108, 126);
+    ctx.lineTo(wx + 195, 290);
+    ctx.lineTo(wx + 24, 290);
+    ctx.closePath();
+    ctx.fill();
+
+    // Wooden shelf with detailed jars, hanging copper pans & utensils
+    const sx = 235 - panX * 0.55;
+    pxRect(sx, 54, 250, 7, '#6d4536');
+    pxRect(sx, 61, 250, 3, '#4a2d22');
+    // Jars on shelf
+    pxRect(sx + 14, 26, 22, 28, '#e3d8c8'); pxRect(sx + 16, 22, 18, 4, '#9e6b43'); // flour/sugar
+    pxRect(sx + 44, 32, 18, 22, '#c9745d'); pxRect(sx + 46, 28, 14, 4, '#70432d'); // paprika
+    pxRect(sx + 70, 28, 20, 26, '#87ab7e'); pxRect(sx + 74, 16, 12, 12, '#5a8f52'); // herb jar
+    pxRect(sx + 102, 24, 22, 30, '#e6b873'); pxRect(sx + 107, 16, 12, 8, '#382a24'); // sesame oil
+    pxRect(sx + 136, 30, 18, 24, '#6d4238'); pxRect(sx + 139, 25, 12, 5, '#d9a45b'); // soy sauce
+    pxRect(sx + 166, 28, 22, 26, '#d9cfc1'); pxRect(sx + 170, 24, 14, 4, '#c45b4b'); // spice
+    // Hanging copper pans & ladle below shelf
+    for (let i = 0; i < 3; i++) {
+      const hx = sx + 204 + i * 18;
+      pxRect(hx, 64, 2, 18, '#8a919c');
+      if (i < 2) {
+        pxCircle(hx + 1, 88, 7 - i, '#c97a4b');
+        pxCircle(hx, 87, 4 - i, '#e69d6c');
+      } else {
+        pxRect(hx - 2, 82, 6, 8, '#cfd8dc');
+      }
     }
 
-    // Hanging shelf & jars
-    const sx = 120 - panX * 0.6;
-    pxRect(sx, 26, 96, 4, '#6e473b');
-    pxRect(sx + 8, 12, 12, 14, '#d9cfc1'); // jar
-    pxRect(sx + 9, 10, 10, 2, '#9b6b43');
-    pxRect(sx + 26, 15, 10, 11, '#82a67d'); // herb pot
-    pxRect(sx + 28, 8, 6, 7, '#5c8a56');
-    pxRect(sx + 50, 11, 14, 15, '#c97a63'); // spice jar
-    pxRect(sx + 72, 14, 12, 12, '#e6b87d'); // oil bottle
-
-    // Countertop
-    pxRect(0, 116, W, 6, '#e7d5be');
-    pxRect(0, 122, W, 58, '#c99c72');
-    pxRect(0, 122, W, 2, '#b0825a');
-    // Wood grain lines
-    for (let i = 0; i < 6; i++) {
-      pxRect((i * 58 - (panX | 0)) % W, 134 + (i % 3) * 14, 24, 1, '#b6875d');
+    // Wooden countertop with bevel, highlights & wood grain
+    pxRect(-80, 224, W + 160, 10, '#ebd8c0');
+    pxRect(-80, 234, W + 160, 136, '#c49366');
+    pxRect(-80, 234, W + 160, 3, '#a47449');
+    for (let i = 0; i < 14; i++) {
+      const gx = ((i * 68 - panX * 0.9) % (W + 160)) - 60;
+      pxRect(gx, 252 + (i % 4) * 24, 42, 2, '#b07f52');
     }
+
+    drawFloatingMotes(time);
   }
 
-  function drawChef(cx, cy, armLAngle, armRAngle, headTilt = 0, lookDir = 0) {
-    // Torso (apron over cozy sweater)
-    pxRect(cx - 14, cy + 16, 28, 30, '#4f6d7a'); // sweater
-    pxRect(cx - 10, cy + 18, 20, 28, '#f4e8d8'); // apron
-    pxRect(cx - 10, cy + 16, 2, 6, '#d9cbb8');  // apron strap
-    pxRect(cx + 8, cy + 16, 2, 6, '#d9cbb8');
-    // Little heart stitched on apron
-    pxRect(cx - 2, cy + 25, 2, 2, '#e06b6b');
-    pxRect(cx + 1, cy + 25, 2, 2, '#e06b6b');
-    pxRect(cx - 1, cy + 27, 3, 2, '#e06b6b');
+  function drawChef(cx, cy, armLAngle, armRAngle, headTilt = 0, lookDir = 0, expression = 'happy') {
+    // Contact shadow behind torso on counter
+    drawAO(cx, cy + 88, 32, 8, 0.22);
 
-    // Head
+    // Cozy dark-slate hoodie/sweater with shaded folds
+    pxRect(cx - 28, cy + 32, 56, 58, '#465d6b');
+    pxRect(cx - 28, cy + 32, 10, 58, '#384b57'); // left shadow
+    pxRect(cx + 18, cy + 32, 10, 58, '#5a7687'); // warm rim highlight
+    // Apron
+    pxRect(cx - 20, cy + 36, 40, 54, '#f5ead9');
+    pxRect(cx - 20, cy + 36, 6, 54, '#e2d2bc');
+    pxRect(cx - 20, cy + 32, 4, 12, '#dfd0ba');
+    pxRect(cx + 16, cy + 32, 4, 12, '#dfd0ba');
+    // Stitched heart on apron pocket
+    pxRect(cx - 12, cy + 64, 24, 18, '#eadbc6');
+    pxRect(cx - 4, cy + 48, 3, 3, '#df6262');
+    pxRect(cx + 1, cy + 48, 3, 3, '#df6262');
+    pxRect(cx - 3, cy + 51, 6, 3, '#df6262');
+    pxRect(cx - 1, cy + 54, 2, 2, '#df6262');
+
+    // Neck & Head
     const hx = cx + headTilt;
     const hy = cy;
-    pxRect(hx - 9, hy - 2, 18, 18, '#f0bfa0'); // face
-    pxRect(hx - 10, hy - 5, 20, 7, '#271e29'); // hair top
-    pxRect(hx - 10, hy - 2, 3, 9, '#271e29'); // hair left
-    pxRect(hx + 7, hy - 2, 3, 9, '#271e29');  // hair right
-    // Eyes
-    const ex = lookDir * 2;
-    pxRect(hx - 5 + ex, hy + 5, 2, 3, '#1d1620');
-    pxRect(hx + 3 + ex, hy + 5, 2, 3, '#1d1620');
-    // Warm blush
-    pxRect(hx - 7 + ex, hy + 9, 3, 2, '#e89082');
-    pxRect(hx + 4 + ex, hy + 9, 3, 2, '#e89082');
-    // Smile
-    pxRect(hx - 2 + ex, hy + 11, 4, 1, '#9c564a');
+    pxRect(hx - 6, hy + 24, 12, 12, '#dfb092');
+    pxRect(hx - 18, hy - 4, 36, 32, '#f2c4a6');
+    pxRect(hx - 18, hy - 4, 6, 32, '#e2af8f'); // face shadow
+    // Messy dark pixel hair (inspired by reference character!)
+    pxRect(hx - 21, hy - 14, 42, 14, '#241b26');
+    pxRect(hx - 22, hy - 6, 7, 18, '#241b26');
+    pxRect(hx + 15, hy - 6, 7, 18, '#241b26');
+    pxRect(hx - 16, hy - 17, 10, 5, '#241b26');
+    pxRect(hx + 4, hy - 18, 12, 6, '#241b26');
+    pxRect(hx - 12, hy - 12, 16, 3, '#3d2f40'); // hair highlight
+    // Bangs strands
+    pxRect(hx - 12, hy - 2, 5, 6, '#241b26');
+    pxRect(hx - 2, hy - 2, 6, 5, '#241b26');
+    pxRect(hx + 8, hy - 2, 5, 6, '#241b26');
 
-    // Arms & hands reaching forward onto counter
-    const lx = cx - 15 + Math.sin(armLAngle) * 5;
-    const ly = cy + 32 + Math.cos(armLAngle) * 3;
-    pxLine(cx - 12, cy + 20, lx, ly, '#4f6d7a');
-    pxLine(cx - 11, cy + 20, lx + 1, ly, '#4f6d7a');
-    pxCircle(lx, ly, 3, '#f0bfa0');
+    // Expressive eyes
+    const ex = lookDir * 4;
+    pxRect(hx - 10 + ex, hy + 9, 4, 5, '#19131c');
+    pxRect(hx + 6 + ex, hy + 9, 4, 5, '#19131c');
+    pxRect(hx - 9 + ex, hy + 10, 1, 2, '#ffffff'); // eye shine
+    pxRect(hx + 7 + ex, hy + 10, 1, 2, '#ffffff');
+    // Eyebrows
+    pxRect(hx - 11 + ex, hy + 6, 6, 2, '#241b26');
+    pxRect(hx + 5 + ex, hy + 6, 6, 2, '#241b26');
+    // Blush & mouth
+    pxRect(hx - 14 + ex, hy + 16, 6, 3, '#e89082');
+    pxRect(hx + 8 + ex, hy + 16, 6, 3, '#e89082');
+    if (expression === 'focused') {
+      pxRect(hx - 3 + ex, hy + 21, 6, 2, '#9c564a');
+    } else {
+      pxRect(hx - 4 + ex, hy + 20, 8, 2, '#9c564a');
+      pxRect(hx - 5 + ex, hy + 19, 2, 1, '#9c564a');
+      pxRect(hx + 3 + ex, hy + 19, 2, 1, '#9c564a');
+    }
 
-    const rx = cx + 15 + Math.sin(armRAngle) * 5;
-    const ry = cy + 32 + Math.cos(armRAngle) * 3;
-    pxLine(cx + 12, cy + 20, rx, ry, '#4f6d7a');
-    pxLine(cx + 11, cy + 20, rx - 1, ry, '#4f6d7a');
-    pxCircle(rx, ry, 3, '#f0bfa0');
+    // Arms & detailed hands reaching toward prep area
+    const lx = cx - 30 + Math.sin(armLAngle) * 10;
+    const ly = cy + 68 + Math.cos(armLAngle) * 6;
+    ctx.strokeStyle = '#465d6b';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - 24, cy + 42); ctx.lineTo(lx, ly); ctx.stroke();
+    pxCircle(lx, ly, 6, '#f2c4a6');
+    pxCircle(lx + 2, ly - 1, 3, '#f7d6be');
+
+    const rx = cx + 30 + Math.sin(armRAngle) * 10;
+    const ry = cy + 68 + Math.cos(armRAngle) * 6;
+    ctx.beginPath(); ctx.moveTo(cx + 24, cy + 42); ctx.lineTo(rx, ry); ctx.stroke();
+    pxCircle(rx, ry, 6, '#f2c4a6');
+    pxCircle(rx - 2, ry - 1, 3, '#f7d6be');
   }
 
-  function drawSteam(x, y, count, time, spread = 12) {
-    for (let i = 0; i < count; i++) {
-      const phase = (time * 0.7 + i * 0.27) % 1;
-      const sx = x + Math.sin(time * 2 + i * 1.9) * (spread * 0.4) + (i - count / 2) * 3;
-      const sy = y - phase * 28;
-      const alpha = (1 - phase) * 0.55;
-      ctx.fillStyle = `rgba(255, 250, 245, ${alpha})`;
-      const size = phase < 0.5 ? 3 : 2;
-      ctx.fillRect(Math.round(sx), Math.round(sy), size, size);
-    }
+  // Detailed foreground pixel-art hands for POV & macro close-up shots
+  function drawForegroundHand(x, y, side = 1, pinch = 0, gripOffset = 0) {
+    // Forearm sleeve
+    ctx.fillStyle = '#465d6b';
+    ctx.beginPath();
+    ctx.ellipse(Math.round(x + side * 48), Math.round(y + 28), 28, 13, side * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    // Wrist & palm
+    pxEllipse(x + side * 18, y + 10, 16, 11, '#efb999');
+    pxEllipse(x + side * 14, y + 8, 12, 8, '#f6cfb4');
+    // Fingers curving inward
+    const p = pinch * 5;
+    pxEllipse(x - side * 2 + p * side, y - 2 + gripOffset, 7, 4, '#f6cfb4');
+    pxEllipse(x - side * 5 + p * side, y + 4 + gripOffset, 7, 4, '#efb999');
+    pxEllipse(x - side * 3 + p * side, y + 10, 6, 4, '#e3a886');
+    // Thumb
+    pxEllipse(x + side * 4, y - 6 + p * 0.5, 6, 4, '#f8d8c0');
   }
 
   // =========================================================================
   // SCENE 1: PREPARING THE DUMPLINGS (0s - 24s)
   // =========================================================================
   function renderScene1(lt) {
-    drawKitchenBackground(0, 0.04);
+    // Dynamic camera direction:
+    // 0-3s: Wide establishing shot -> gentle push-in
+    // 3-6s: Overhead-angled counter zoom on mixing bowl
+    // 6-9.5s: Side-angle kneading & dividing dough
+    // 9.5-13.5s: Macro tracking shot of knife chopping herbs & chicken bowl
+    // 13.5-17s: First-person POV macro of hands folding individual pleats!
+    // 17-24s: Low-angle shot of bamboo steamer over stove flames + lid lift
+    let camX = 320, camY = 180, camZ = 1.0, camR = 0;
+    if (lt < 3.0) {
+      const u = easeInOut(lt / 3.0);
+      camZ = lerp(0.92, 1.08, u);
+      camY = lerp(175, 192, u);
+    } else if (lt < 6.0) {
+      const u = easeInOut((lt - 3.0) / 3.0);
+      camZ = lerp(1.08, 1.32, u);
+      camY = lerp(192, 224, u);
+    } else if (lt < 9.5) {
+      camZ = 1.36;
+      camX = 320 + Math.sin(lt * 3) * 6;
+      camY = 232;
+    } else if (lt < 13.5) {
+      const u = easeInOut((lt - 9.5) / 4.0);
+      camZ = lerp(1.42, 1.50, u);
+      camX = lerp(290, 355, u);
+      camY = 240;
+    } else if (lt < 17.0) {
+      camZ = 1.52;
+      camX = 320;
+      camY = 246;
+    } else {
+      const u = easeInOut(clamp((lt - 17.0) / 4.0, 0, 1));
+      camZ = lerp(1.22, 1.44, u);
+      camY = lerp(218, 224, u);
+    }
 
-    // Chef standing behind counter
-    const bob = Math.sin(lt * 4) * 1.5;
-    const armSpeed = lt > 6 && lt < 17 ? lt * 8 : lt * 3;
-    drawChef(160, 74 + Math.abs(bob) * 0.4, armSpeed, -armSpeed + 1.2, Math.sin(lt * 1.5) * 1);
+    withCamera(camX, camY, camZ, camR, () => {
+      drawKitchenBackground(0, 0.04, lt);
 
-    // Cutting board / prep mat
-    pxRect(92, 128, 136, 36, '#deb887');
-    pxRect(92, 162, 136, 3, '#b88d5c');
+      const bob = Math.sin(lt * 4) * 2.5;
+      const armSpeed = lt > 6 && lt < 17 ? lt * 8 : lt * 3;
+      if (lt < 13.5 || lt >= 17.0) {
+        drawChef(320, 146 + Math.abs(bob) * 0.5, armSpeed, -armSpeed + 1.2, Math.sin(lt * 1.5) * 2, 0, lt > 9 ? 'focused' : 'happy');
+      }
 
-    // Flour jar & water pitcher on left
-    pxRect(26, 122, 22, 26, '#efe9df');
-    pxRect(28, 118, 18, 4, '#a87449');
-    pxText('FLOUR', 37, 138, '#9b8b7a', 'center');
+      // Richly grained maple cutting board with contact shadow
+      drawAO(320, 316, 152, 14, 0.28);
+      pxRect(172, 250, 296, 68, '#deb887');
+      pxRect(172, 312, 296, 7, '#b58856');
+      for (let i = 0; i < 6; i++) {
+        pxRect(184 + i * 48, 260 + (i % 2) * 18, 32, 2, '#cfa36e');
+      }
 
-    pxRect(54, 126, 16, 22, '#99c9e8'); // water pitcher
-    pxRect(56, 128, 12, 16, '#bce2f7');
+      // Flour jar & glass water pitcher on left
+      drawAO(78, 296, 28, 7, 0.25);
+      pxRect(52, 238, 44, 54, '#f2ece1');
+      pxRect(52, 238, 8, 54, '#ded5c5');
+      pxRect(56, 230, 36, 8, '#a67247');
+      pxText('FLOUR', 74, 270, '#8d7d6c', 'center', 10);
 
-    // 0-3.5s: Pouring flour into mixing bowl
-    if (lt < 6.0) {
-      // Mixing bowl
-      pxEllipse(160, 146, 22, 9, '#d66853');
-      pxEllipse(160, 143, 20, 6, '#f4ede2');
+      drawAO(126, 296, 20, 6, 0.22);
+      pxRect(108, 246, 32, 46, '#90c2e3');
+      pxRect(112, 252, 24, 34, '#bde4fa');
+      pxRect(114, 254, 4, 26, '#e6f7ff'); // glass highlight
 
-      if (lt >= 1.5 && lt < 4.2) {
-        // Pouring flour stream + dust
-        const pour = Math.sin((lt - 1.5) * 6) * 2;
-        pxRect(156 + pour, 116, 5, 26, '#fffaf0');
-        for (let i = 0; i < 12; i++) {
-          const px = 148 + hash(i + Math.floor(lt * 10)) * 24;
-          const py = 132 + hash(i * 3 + Math.floor(lt * 10)) * 14;
-          pxRect(px, py, 2, 2, '#fffdf7');
+      // 0-6s: Pouring flour & water into ceramic mixing bowl
+      if (lt < 6.0) {
+        drawAO(320, 296, 52, 12, 0.3);
+        pxEllipse(320, 286, 48, 20, '#c85a46');
+        pxEllipse(320, 278, 44, 14, '#e0725c');
+        pxEllipse(320, 278, 40, 11, '#f4ede2');
+
+        if (lt >= 1.4 && lt < 4.4) {
+          const pour = Math.sin((lt - 1.4) * 6) * 3;
+          pxRect(314 + pour, 212, 10, 62, '#fffaf0');
+          for (let i = 0; i < 24; i++) {
+            const pPhase = (lt * 2.5 + i * 0.13) % 1;
+            const px = 290 + hash(i + Math.floor(lt * 12)) * 60;
+            const py = 225 + pPhase * 55;
+            pxRect(px, py, 3, 3, '#fffdf7');
+          }
+        }
+        if (lt >= 3.8 && lt < 6.0) {
+          // Animated water stream + splash droplets
+          ctx.strokeStyle = '#a6dcf7';
+          ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.moveTo(280, 224); ctx.quadraticCurveTo(302, 245, 314, 276); ctx.stroke();
+          for (let i = 0; i < 6; i++) {
+            const dx = 314 + Math.cos(lt * 14 + i) * 14;
+            const dy = 274 - Math.abs(Math.sin(lt * 14 + i)) * 8;
+            pxRect(dx, dy, 2, 2, '#dff5ff');
+          }
         }
       }
-      if (lt >= 3.8 && lt < 6.0) {
-        // Water pouring
-        pxLine(142, 118, 156, 142, '#9cd6f5');
-        pxLine(143, 118, 157, 142, '#d6f2ff');
-      }
-      pxText('1. Mixing flour & water', 160, 173, '#f7e4cf', 'center');
-    }
-    // 6-9.5s: Kneading smooth elastic dough & dividing into portions
-    else if (lt < 9.5) {
-      // Flour dusting on board
-      for (let i = 0; i < 20; i++) {
-        pxRect(110 + hash(i * 7) * 95, 134 + hash(i * 11) * 22, 2, 1, '#fff6e8');
-      }
-      if (lt < 8.0) {
-        const squish = Math.sin(lt * 10) * 3;
-        pxEllipse(160, 146, 18 + squish, 10 - squish * 0.4, '#f7ebd4');
-        pxEllipse(158, 143, 12 + squish * 0.5, 6, '#fff7e8');
-        pxText('Kneading elastic dough...', 160, 173, '#f7e4cf', 'center');
-      } else {
-        // Divided into small portions
-        for (let i = 0; i < 5; i++) {
-          pxCircle(124 + i * 18, 146, 5, '#f7ebd4');
-          pxCircle(123 + i * 18, 144, 2, '#fff9ee');
+      // 6-9.5s: Kneading & stretching elastic dough + dividing into portions
+      else if (lt < 9.5) {
+        for (let i = 0; i < 36; i++) {
+          pxRect(210 + hash(i * 7) * 210, 260 + hash(i * 11) * 46, 3, 2, '#fff7ea');
         }
-        pxText('Dividing dough portions', 160, 173, '#f7e4cf', 'center');
+        if (lt < 8.0) {
+          const squish = Math.sin(lt * 10) * 7;
+          drawAO(320, 294, 40 + squish, 10, 0.25);
+          pxEllipse(320, 282, 36 + squish, 18 - squish * 0.4, '#f5e6cb');
+          pxEllipse(316, 276, 24 + squish * 0.5, 10, '#fff7e8');
+          // Hands pressing down and stretching
+          const pressY = 264 + Math.abs(Math.sin(lt * 10)) * 10;
+          drawForegroundHand(286, pressY, -1, 0.4);
+          drawForegroundHand(354, pressY, 1, 0.4);
+        } else {
+          for (let i = 0; i < 5; i++) {
+            const px = 240 + i * 40;
+            drawAO(px, 290, 12, 5, 0.22);
+            pxCircle(px, 284, 11, '#f7ebd4');
+            pxCircle(px - 3, 280, 5, '#fff9ee');
+          }
+        }
       }
-    }
-    // 9.5-13.5s: Chopping herbs & mixing minced chicken stuffing
-    else if (lt < 13.5) {
-      // Minced chicken bowl
-      pxEllipse(188, 146, 18, 8, '#7aa095');
-      pxEllipse(188, 144, 15, 5, '#e89d8b'); // chicken filling
-      // Herbs & aromatics on left of board
-      for (let i = 0; i < 14; i++) {
-        pxRect(118 + hash(i * 5) * 24, 140 + hash(i * 9) * 12, 2, 2, i % 3 === 0 ? '#f5efe0' : '#5ca355');
+      // 9.5-13.5s: Chopping scallions/aromatics & mixing chicken filling
+      else if (lt < 13.5) {
+        // Glass bowl with minced chicken & green scallions (like reference!)
+        drawAO(384, 294, 42, 10, 0.26);
+        pxEllipse(384, 284, 38, 16, '#7aa095');
+        pxEllipse(384, 280, 34, 12, '#e38d7b');
+        for (let i = 0; i < 24; i++) {
+          const sx = 358 + hash(i * 3.1) * 52;
+          const sy = 274 + hash(i * 7.3) * 12;
+          pxRect(sx, sy, 3, 2, i % 3 === 0 ? '#55a64e' : i % 3 === 1 ? '#f7ebd4' : '#c94c38');
+        }
+        // Chopping green onions & garlic on left
+        for (let i = 0; i < 22; i++) {
+          pxRect(226 + hash(i * 5) * 56, 274 + hash(i * 9) * 24, 3, 3, i % 3 === 0 ? '#f5efe0' : '#4fa348');
+        }
+        const chopY = Math.abs(Math.sin(lt * 20)) * 16;
+        // Gleaming chef knife
+        pxRect(244, 256 - chopY, 34, 11, '#d8e2e6');
+        pxRect(244, 265 - chopY, 34, 2, '#ffffff');
+        pxRect(278, 256 - chopY, 14, 6, '#4a3024');
       }
-      // Chopping knife animation
-      const chopY = Math.abs(Math.sin(lt * 18)) * 8;
-      pxRect(126, 132 - chopY, 14, 5, '#cfd8dc');
-      pxRect(140, 132 - chopY, 7, 3, '#5c3d2e');
-      pxText('Chopping herbs & mixing chicken filling', 160, 173, '#f7e4cf', 'center');
-    }
-    // 13.5-17s: Rolling circular wrappers & folding pleats by hand
-    else if (lt < 17.0) {
-      // Circular wrappers
-      pxEllipse(122, 146, 12, 6, '#f9eed9');
-      pxEllipse(122, 146, 5, 3, '#e38d7b'); // filling in center
+      // 13.5-17s: First-person POV macro — placing filling & folding individual pleats!
+      else if (lt < 17.0) {
+        const foldU = smoothstep(14.0, 16.6, lt);
+        // Wooden tray of already-folded pleated dumplings in background
+        for (let i = 0; i < 4; i++) {
+          const dx = 226 + i * 62;
+          drawAO(dx, 268, 16, 6, 0.22);
+          pxEllipse(dx, 262, 15, 10, '#f7ebd4');
+          for (let p = -3; p <= 3; p++) {
+            pxRect(dx + p * 3, 254 + Math.abs(p), 2, 4, '#d6bf9e');
+          }
+        }
+        // Hero dumpling in foreground hands!
+        const pinch = Math.abs(Math.sin(lt * 10));
+        drawAO(320, 304, 34, 10, 0.22);
+        const wRx = lerp(28, 22, foldU);
+        const wRy = lerp(16, 14, foldU);
+        pxEllipse(320, 286, wRx, wRy, '#f9eed9');
+        pxEllipse(320, 286, wRx - 4, wRy - 4, '#fff7e8');
+        // Chicken filling visible before pleats close over it
+        if (foldU < 0.75) {
+          pxCircle(320, 285, lerp(11, 5, foldU), '#d97b68');
+          pxRect(316, 282, 3, 3, '#55a64e');
+          pxRect(322, 286, 3, 3, '#55a64e');
+        }
+        // Individual pleats forming sequentially!
+        const pleatCount = Math.floor(foldU * 8);
+        for (let p = 0; p < pleatCount; p++) {
+          const px = 303 + p * 5;
+          pxRect(px, 274 + Math.abs(p - 3.5) * 0.8, 2, 7, '#cfb795');
+          pxRect(px + 1, 274 + Math.abs(p - 3.5) * 0.8, 1, 5, '#fffaf0');
+        }
+        drawForegroundHand(284, 284, -1, pinch);
+        drawForegroundHand(356, 284, 1, pinch);
+      }
+      // 17-24s: Arranging in bamboo steamer over stove flames & volumetric steam
+      else {
+        drawStoveBurner(320, 308, lt, 0.9);
+        const sx = 320, sy = 278;
+        // Metal steaming pot base + bamboo basket
+        pxRect(sx - 66, sy + 10, 132, 22, '#626975');
+        pxEllipse(sx, sy + 12, 62, 20, '#b57f4b');
+        pxRect(sx - 62, sy - 14, 124, 26, '#cfa06b');
+        pxEllipse(sx, sy - 14, 62, 19, '#7a5230');
+        // Bamboo weave lines
+        for (let x = sx - 56; x < sx + 56; x += 12) {
+          pxRect(x, sy - 6, 6, 12, '#b88652');
+        }
+        // Glossy pleated dumplings inside
+        const spots = [[-28, -14], [0, -20], [28, -14], [-16, -4], [16, -4]];
+        spots.forEach(([ox, oy]) => {
+          pxEllipse(sx + ox, sy + oy, 13, 8, '#fff2db');
+          pxRect(sx + ox - 5, sy + oy - 5, 6, 2, '#ffffff');
+          pxRect(sx + ox - 4, sy + oy - 6, 2, 4, '#d6bf9e');
+          pxRect(sx + ox + 1, sy + oy - 6, 2, 4, '#d6bf9e');
+        });
 
-      // Rolling pin
-      pxRect(104, 133, 30, 4, '#b87d4b');
-      // Folded pleated dumplings
-      const foldedCount = Math.min(4, Math.floor((lt - 13.5) * 1.3) + 1);
-      for (let i = 0; i < foldedCount; i++) {
-        const dx = 154 + i * 16;
-        pxEllipse(dx, 147, 7, 5, '#f7ebd4');
-        // Pleats on top
-        pxRect(dx - 4, 142, 1, 2, '#d8c3a5');
-        pxRect(dx - 1, 141, 1, 2, '#d8c3a5');
-        pxRect(dx + 2, 142, 1, 2, '#d8c3a5');
-      }
-      pxText('Rolling wrappers & folding pleats', 160, 173, '#f7e4cf', 'center');
-    }
-    // 17-24s: Arranging in bamboo steamer & steaming glossy dumplings
-    else {
-      // Bamboo steamer on right-center
-      const sx = 160, sy = 144;
-      pxEllipse(sx, sy + 6, 30, 12, '#b9834f');
-      pxRect(sx - 30, sy - 6, 60, 12, '#cfa06b');
-      pxEllipse(sx, sy - 6, 30, 11, '#7a5230'); // interior
-      // Dumplings arranged inside
-      const spots = [[-14, -7], [0, -10], [14, -7], [-8, -2], [8, -2]];
-      spots.forEach(([ox, oy]) => {
-        pxEllipse(sx + ox, sy + oy, 6, 4, '#fff4df');
-        pxRect(sx + ox - 2, sy + oy - 2, 3, 1, '#ffffff'); // glossy sheen!
-      });
+        let lidOffset = 0;
+        if (lt < 18.6) lidOffset = -64 * (1 - smoothstep(17.0, 18.6, lt));
+        else if (lt > 21.4) lidOffset = -72 * smoothstep(21.4, 23.2, lt);
 
-      // Steamer lid closes (18.5-21.5s), then lifts (21.5-24s)
-      let lidOffset = 0;
-      if (lt < 18.5) lidOffset = -28 * (1 - smoothstep(17, 18.5, lt));
-      else if (lt > 21.5) lidOffset = -32 * smoothstep(21.5, 23.0, lt);
+        if (lt >= 17.4 && lt <= 23.0) {
+          pxEllipse(sx, sy - 20 + lidOffset, 64, 20, '#d9aa73');
+          pxEllipse(sx, sy - 26 + lidOffset, 58, 16, '#c4925a');
+          pxRect(sx - 10, sy - 34 + lidOffset, 20, 6, '#8f5f34');
+        }
+        if (lt >= 18.4) {
+          drawSteam(sx, sy - 28, 16, lt, 64, 96);
+        }
+      }
+    });
 
-      if (lt >= 17.5 && lt <= 22.8) {
-        pxEllipse(sx, sy - 10 + lidOffset, 31, 11, '#d9aa73');
-        pxEllipse(sx, sy - 13 + lidOffset, 28, 9, '#c4925a');
-        pxRect(sx - 5, sy - 17 + lidOffset, 10, 3, '#8f5f34');
-      }
-      if (lt >= 18.5) {
-        drawSteam(sx, sy - 14, 10, lt, 26);
-      }
-      pxText(lt > 21.8 ? 'Glossy steamed dumplings!' : 'Steaming in bamboo basket...', 160, 173, '#f7e4cf', 'center');
-    }
+    // Crisp HUD caption
+    let cap = '1. Mixing flour & water';
+    if (lt >= 6 && lt < 8) cap = 'Kneading elastic dough...';
+    else if (lt >= 8 && lt < 9.5) cap = 'Dividing dough portions';
+    else if (lt >= 9.5 && lt < 13.5) cap = 'Chopping scallions & mixing chicken filling';
+    else if (lt >= 13.5 && lt < 17.0) cap = 'Folding each dumpling with neat pleats';
+    else if (lt >= 17.0 && lt < 21.6) cap = 'Steaming in bamboo basket...';
+    else if (lt >= 21.6) cap = 'Glossy steamed dumplings!';
+    pxText(cap, W / 2, H - 14, '#f7e4cf', 'center', 13);
   }
 
   // =========================================================================
   // SCENE 2: PREPARING THE SUSHI (24s - 46s)
   // =========================================================================
   function renderScene2(lt) {
-    drawKitchenBackground(35, 0.03);
-    const armSpeed = lt * 4.5;
-    drawChef(160, 74, armSpeed, -armSpeed + 0.8, Math.sin(lt * 1.2) * 1);
-
-    // Hinoki wooden sushi board
-    pxRect(78, 127, 164, 38, '#ead0a8');
-    pxRect(78, 163, 164, 3, '#c4a476');
-
-    // 24-28.5s: Slicing fresh salmon with sharp knife & curing
+    // Camera choreography:
+    // 0-4.5s: Macro side-angle close-up on salmon slicing & knife gleam
+    // 4.5-9s: Hangiri wooden tub with individual rice grains + steaming rice cakes
+    // 9-16s: Overhead shot of nori, spreading rice, salmon+cucumber, rolling mat
+    // 16-22s: Tracking slice & final sushi platter reveal
+    let camX = 320, camY = 230, camZ = 1.35;
     if (lt < 4.5) {
-      // Salmon fillet
-      pxRect(118, 138, 44, 14, '#f27961');
-      // White fat marbling lines
-      for (let x = 122; x < 158; x += 6) {
-        pxLine(x, 139, x + 3, 151, '#ffd0c4');
-      }
-      // Sharp knife slicing cleanly
-      const sliceX = 126 + ((lt * 10) % 30);
-      const sliceY = Math.sin(lt * 10) * 4;
-      pxRect(sliceX, 128 + sliceY, 3, 18, '#e3edf2');
-      pxRect(sliceX, 122 + sliceY, 4, 6, '#382a24');
-      // Curing salt/seasoning shimmer
-      if (lt > 2.5) {
-        for (let i = 0; i < 10; i++) {
-          pxRect(120 + hash(i * 13) * 38, 140 + hash(i * 17) * 10, 1, 1, '#ffffff');
-        }
-      }
-      pxText('Slicing & curing fresh salmon', 160, 173, '#f7e4cf', 'center');
+      const u = easeInOut(lt / 4.5);
+      camZ = lerp(1.38, 1.56, u);
+      camX = lerp(300, 330, u);
+      camY = 248;
+    } else if (lt < 9.0) {
+      camZ = 1.24;
+      camX = 320 + Math.sin(lt * 1.5) * 14;
+      camY = 232;
+    } else if (lt < 16.0) {
+      const u = easeInOut((lt - 9.0) / 7.0);
+      camZ = lerp(1.42, 1.52, u);
+      camX = 320;
+      camY = 246;
+    } else {
+      const u = easeInOut((lt - 16.0) / 6.0);
+      camZ = lerp(1.46, 1.26, u);
+      camX = 320;
+      camY = lerp(246, 224, u);
     }
-    // 28.5-33s: Washing, cooking & seasoning sushi rice + steaming rice cakes
-    else if (lt < 9.0) {
-      // Left: Bowl of sushi rice being washed & seasoned
-      pxEllipse(124, 146, 20, 9, '#486581');
-      pxEllipse(124, 143, 17, 6, lt < 6.0 ? '#cfe8f7' : '#ffffff');
-      if (lt < 6.0) {
-        // Swirling water
-        const sx = 124 + Math.cos(lt * 8) * 8;
-        const sy = 143 + Math.sin(lt * 8) * 3;
-        pxRect(sx, sy, 4, 2, '#ffffff');
-      } else {
-        // Rice grains + gentle steam
-        drawSteam(124, 136, 5, lt, 10);
-      }
 
-      // Right: Steaming rice cakes
-      pxEllipse(196, 148, 22, 8, '#8d6e63');
-      for (let i = 0; i < 3; i++) {
-        pxEllipse(184 + i * 12, 144, 6, 4, '#fff8f0');
-      }
-      drawSteam(196, 136, 7, lt + 0.5, 16);
-      pxText('Seasoning sushi rice & steaming rice cakes', 160, 173, '#f7e4cf', 'center');
-    }
-    // 33-40s: Spreading rice on nori, arranging fish, rolling bamboo mat
-    else if (lt < 16.0) {
-      // Bamboo rolling mat (makisu)
-      pxRect(114, 132, 92, 28, '#cfa468');
-      for (let y = 134; y < 160; y += 3) {
-        pxRect(114, y, 92, 1, '#b5874c');
-      }
+    withCamera(camX, camY, camZ, 0, () => {
+      drawKitchenBackground(70, 0.03, lt + 24);
+      drawChef(320, 146, lt * 4.5, -lt * 4.5 + 0.8, Math.sin(lt * 1.2) * 2, 0, 'focused');
 
-      if (lt < 13.0) {
-        // Nori seaweed sheet
-        pxRect(122, 135, 76, 22, '#1f3628');
-        // Rice spread gradually
-        const spreadW = Math.min(72, (lt - 9.0) * 28);
-        pxRect(124, 137, spreadW, 18, '#faf6ee');
-        if (lt > 11.2) {
-          // Salmon + avocado + cucumber strips
-          pxRect(126, 143, 68, 4, '#f27961');
-          pxRect(126, 148, 68, 3, '#72b059');
+      // Hinoki wooden sushi board
+      drawAO(320, 316, 175, 14, 0.28);
+      pxRect(150, 248, 340, 70, '#edd3ab');
+      pxRect(150, 314, 340, 6, '#c4a476');
+
+      // 0-4.5s: Macro salmon fillet with fat marbling + sharp knife slicing
+      if (lt < 4.5) {
+        drawAO(320, 296, 62, 12, 0.25);
+        pxRect(262, 268, 108, 30, '#f06e54');
+        pxRect(262, 268, 108, 5, '#ff9882'); // top sheen
+        // Salmon fat marbling stripes
+        for (let x = 270; x < 364; x += 10) {
+          pxLine(x, 270, x + 6, 296, '#ffd2c6');
+          pxLine(x + 1, 270, x + 7, 296, '#ffe6de');
         }
-        pxText('Spreading rice & filling on nori', 160, 173, '#f7e4cf', 'center');
-      } else {
-        // Rolling tightly!
-        const rollProgress = smoothstep(13.0, 15.8, lt);
-        const h = lerp(22, 10, rollProgress);
-        pxRect(122, 146 - h / 2, 76, h, '#243d2e');
-        pxRect(122, 146 - h / 2 + 2, 76, 2, '#355742');
-        pxText('Rolling tightly with bamboo mat', 160, 173, '#f7e4cf', 'center');
+        // Separated slices on right
+        const numSlices = Math.min(4, Math.floor(lt * 1.1));
+        for (let s = 0; s < numSlices; s++) {
+          pxRect(378 + s * 12, 274, 8, 22, '#f06e54');
+          pxLine(380 + s * 12, 275, 384 + s * 12, 294, '#ffd2c6');
+        }
+        // Sharp sushi knife with metallic gleam
+        const sliceX = 276 + ((lt * 22) % 80);
+        const sliceY = Math.sin(lt * 12) * 8;
+        pxRect(sliceX, 242 + sliceY, 7, 40, '#dce6eb');
+        pxRect(sliceX, 242 + sliceY, 2, 40, '#ffffff');
+        pxRect(sliceX - 1, 228 + sliceY, 9, 14, '#3a2a22');
+        if (lt > 2.4) {
+          for (let i = 0; i < 18; i++) {
+            pxRect(266 + hash(i * 13) * 96, 272 + hash(i * 17) * 20, 2, 2, '#ffffff');
+          }
+        }
       }
-    }
-    // 40-46s: Cutting sushi roll & arranging neatly on serving plate
-    else {
-      if (lt < 19.0) {
-        // Slicing roll into neat pieces
-        for (let i = 0; i < 6; i++) {
-          const rx = 118 + i * 14;
-          pxRect(rx, 140, 11, 12, '#1f3628');
-          pxRect(rx + 2, 142, 7, 8, '#faf6ee');
-          pxRect(rx + 4, 144, 3, 4, '#f27961');
+      // 4.5-9s: Wooden Hangiri tub with individual pixel rice grains & steaming rice cakes
+      else if (lt < 9.0) {
+        // Left: Hangiri wooden sushi-rice tub
+        drawAO(248, 296, 48, 12, 0.26);
+        pxEllipse(248, 286, 44, 18, '#b87d48');
+        pxEllipse(248, 278, 42, 15, '#cfa06b');
+        pxEllipse(248, 278, 36, 12, '#faf7f0');
+        // Individual pixel rice grains!
+        for (let i = 0; i < 65; i++) {
+          const rx = 218 + hash(i * 5.3) * 60;
+          const ry = 270 + hash(i * 9.7) * 16;
+          pxRect(rx, ry, 3, 2, i % 3 === 0 ? '#ffffff' : '#ede6d8');
         }
-        const kx = 128 + Math.floor((lt - 16.0) * 2) * 14;
-        pxRect(kx, 129, 2, 18, '#e3edf2');
-        pxText('Cutting into neat, even pieces', 160, 173, '#f7e4cf', 'center');
-      } else {
-        // Ceramic serving plate with arranged sushi & rice cakes
-        pxRect(102, 132, 116, 28, '#2b394a');
-        pxRect(105, 134, 110, 24, '#36495e');
-        for (let i = 0; i < 6; i++) {
-          const sx = 114 + (i % 3) * 18;
-          const sy = 138 + Math.floor(i / 3) * 11;
-          pxCircle(sx, sy + 3, 5, '#1f3628');
-          pxCircle(sx, sy + 3, 4, '#faf6ee');
-          pxCircle(sx, sy + 3, 2, '#f27961');
+        if (lt < 6.2) {
+          const sx = 248 + Math.cos(lt * 8) * 16;
+          const sy = 276 + Math.sin(lt * 8) * 5;
+          pxRect(sx - 4, sy - 14, 8, 16, '#cfa06b'); // shamoji rice paddle
         }
-        // Rice cakes neatly plated on right side
-        for (let i = 0; i < 3; i++) {
-          pxEllipse(178 + i * 10, 146, 4, 6, '#fff8f0');
+        drawSteam(248, 264, 9, lt, 28, 48);
+
+        // Right: Steaming white rice cakes (tteok)
+        drawAO(392, 296, 46, 11, 0.25);
+        pxEllipse(392, 288, 42, 15, '#8a6b5e');
+        for (let i = 0; i < 4; i++) {
+          pxEllipse(366 + i * 17, 282, 10, 6, '#fff8f0');
+          pxRect(363 + i * 17, 279, 5, 2, '#ffffff');
         }
-        pxText('Sushi & rice cakes plated!', 160, 173, '#f7e4cf', 'center');
+        drawSteam(392, 266, 10, lt + 0.5, 34, 52);
       }
-    }
+      // 9-16s: Spreading individual rice grains on nori, arranging salmon/cucumber, rolling bamboo mat
+      else if (lt < 16.0) {
+        // Bamboo mat (makisu)
+        pxRect(228, 258, 184, 54, '#cfa468');
+        for (let y = 262; y < 312; y += 5) {
+          pxRect(228, y, 184, 2, '#b38549');
+        }
+        if (lt < 13.0) {
+          // Dark green textured nori
+          pxRect(244, 264, 152, 42, '#1d3426');
+          const spreadW = Math.min(144, (lt - 9.0) * 56);
+          pxRect(248, 268, spreadW, 34, '#f8f5ed');
+          // Individual rice grain texture across spread
+          for (let gx = 250; gx < 248 + spreadW - 4; gx += 6) {
+            for (let gy = 270; gy < 300; gy += 5) {
+              pxRect(gx + (gy % 2) * 2, gy, 3, 2, '#ffffff');
+            }
+          }
+          if (lt > 11.2) {
+            pxRect(252, 280, 136, 7, '#f06e54'); // salmon strip
+            pxRect(252, 288, 136, 5, '#68ad51'); // cucumber/avocado
+          }
+        } else {
+          const rollU = smoothstep(13.0, 15.8, lt);
+          const h = lerp(42, 20, rollU);
+          pxRect(244, 285 - h / 2, 152, h, '#223b2c');
+          pxRect(244, 285 - h / 2 + 4, 152, 4, '#365943');
+          drawForegroundHand(276, 282, -1, 0.5);
+          drawForegroundHand(364, 282, 1, 0.5);
+        }
+      }
+      // 16-22s: Slicing roll & final sushi + rice cake presentation
+      else {
+        if (lt < 19.0) {
+          for (let i = 0; i < 6; i++) {
+            const rx = 236 + i * 28;
+            pxRect(rx, 274, 22, 24, '#1d3426');
+            pxRect(rx + 4, 278, 14, 16, '#faf6ee');
+            pxRect(rx + 8, 282, 6, 8, '#f06e54');
+            pxRect(rx + 8, 288, 6, 3, '#68ad51');
+          }
+          const kx = 256 + Math.floor((lt - 16.0) * 2) * 28;
+          pxRect(kx, 252, 4, 36, '#e3edf2');
+          pxRect(kx, 252, 1, 36, '#ffffff');
+        } else {
+          // Dark glazed ceramic platter
+          drawAO(320, 304, 122, 12, 0.3);
+          pxRect(204, 258, 232, 54, '#243140');
+          pxRect(210, 262, 220, 46, '#324357');
+          for (let i = 0; i < 6; i++) {
+            const sx = 230 + (i % 3) * 36;
+            const sy = 274 + Math.floor(i / 3) * 20;
+            pxCircle(sx, sy, 9, '#1d3426');
+            pxCircle(sx, sy, 7, '#faf6ee');
+            pxCircle(sx, sy, 4, '#f06e54');
+            pxRect(sx + 1, sy + 1, 2, 2, '#68ad51');
+          }
+          // Steamed rice cakes on right
+          for (let i = 0; i < 3; i++) {
+            pxEllipse(366 + i * 20, 284, 8, 12, '#fff8f0');
+            pxRect(364 + i * 20, 278, 3, 5, '#ffffff');
+          }
+        }
+      }
+    });
+
+    let cap = '2. Slicing & curing fresh salmon';
+    if (lt >= 4.5 && lt < 9) cap = 'Seasoning sushi rice & steaming rice cakes';
+    else if (lt >= 9 && lt < 13) cap = 'Spreading rice & filling on nori';
+    else if (lt >= 13 && lt < 16) cap = 'Rolling tightly with bamboo mat';
+    else if (lt >= 16 && lt < 19) cap = 'Cutting into neat, even pieces';
+    else if (lt >= 19) cap = 'Sushi & rice cakes plated!';
+    pxText(cap, W / 2, H - 14, '#f7e4cf', 'center', 13);
   }
 
   // =========================================================================
   // SCENE 3: PREPARING CRISPY FRIED CHICKEN (46s - 66s)
   // =========================================================================
   function renderScene3(lt) {
-    drawKitchenBackground(70, 0.06);
-    drawChef(160, 74, lt * 5, -lt * 5 + 1.0, Math.sin(lt * 1.4) * 1);
-
-    // 46-50s: Marinating chicken pieces with spices
+    // Camera choreography:
+    // 0-4s: Overhead macro of marinating chicken & falling spice rain
+    // 4-8s: Close-up pressing seasoned flour onto drumstick
+    // 8-14s: Low-angle / macro shot of bubbling fryer over stove flames!
+    // 14-20s: Lifting onto wire rack & crispy crunch reveal
+    let camX = 320, camY = 234, camZ = 1.32;
     if (lt < 4.0) {
-      pxEllipse(160, 146, 30, 12, '#d8c5b4');
-      // Drumsticks
-      for (let i = 0; i < 3; i++) {
-        const cx = 144 + i * 16;
-        pxEllipse(cx, 144, 7, 5, lt > 2 ? '#d66847' : '#f2c1b0');
-        pxRect(cx + 5, 143, 5, 2, '#f5efe6');
-      }
-      // Spice sprinkle particles
-      if (lt > 1.0 && lt < 3.5) {
-        for (let i = 0; i < 16; i++) {
-          const sx = 136 + hash(i + Math.floor(lt * 12)) * 48;
-          const sy = 122 + ((lt * 35 + i * 7) % 24);
-          pxRect(sx, sy, 2, 2, i % 2 === 0 ? '#c93b2b' : '#e09f3e');
+      camZ = lerp(1.26, 1.44, lt / 4.0);
+    } else if (lt < 8.0) {
+      camZ = 1.48;
+      camY = 242;
+    } else if (lt < 14.0) {
+      camZ = lerp(1.30, 1.48, (lt - 8.0) / 6.0);
+      camY = 232;
+    } else {
+      camZ = lerp(1.42, 1.28, (lt - 14.0) / 6.0);
+      camY = 236;
+    }
+
+    withCamera(camX, camY, camZ, 0, () => {
+      drawKitchenBackground(140, 0.06, lt + 46);
+      drawChef(320, 146, lt * 5, -lt * 5 + 1.0, Math.sin(lt * 1.4) * 2, 0, 'focused');
+
+      // 0-4s: Marinating chicken with spice rain
+      if (lt < 4.0) {
+        drawAO(320, 298, 66, 14, 0.28);
+        pxEllipse(320, 286, 62, 24, '#8d99a6');
+        pxEllipse(320, 282, 56, 20, '#d8c5b4');
+        for (let i = 0; i < 3; i++) {
+          const cx = 286 + i * 34;
+          const col = lt > 2.0 ? '#cf5b3a' : '#f2c1b0';
+          pxEllipse(cx, 282, 14, 9, col);
+          pxRect(cx + 10, 280, 10, 4, '#f5efe6');
+        }
+        if (lt > 0.8 && lt < 3.6) {
+          for (let i = 0; i < 28; i++) {
+            const pPhase = (lt * 2.2 + i * 0.11) % 1;
+            const sx = 272 + hash(i + Math.floor(lt * 10)) * 96;
+            const sy = 230 + pPhase * 52;
+            pxRect(sx, sy, 3, 3, i % 2 === 0 ? '#c93b2b' : '#e09f3e');
+          }
         }
       }
-      pxText('Marinating chicken with spices', 160, 173, '#f7e4cf', 'center');
-    }
-    // 50-54s: Pressing seasoned flour onto chicken for crispy irregular crust
-    else if (lt < 8.0) {
-      // Flour tray
-      pxRect(112, 132, 96, 30, '#d8d2c7');
-      pxRect(116, 135, 88, 24, '#f5ebd8');
-      // Chicken being pressed into flour
-      const press = Math.abs(Math.sin(lt * 7)) * 3;
-      pxEllipse(160, 146 + press, 14, 9, '#f0d8b8');
-      pxEllipse(156, 144 + press, 6, 4, '#fff4df');
-      pxRect(172, 145 + press, 7, 3, '#fff6e8');
-      // Irregular crust bumps
-      pxRect(148, 141 + press, 3, 3, '#e6c89c');
-      pxRect(162, 148 + press, 4, 3, '#e6c89c');
-      pxText('Pressing seasoned flour for crispy crust', 160, 173, '#f7e4cf', 'center');
-    }
-    // 54-60s: Lowering into hot oil, bubbling & golden-brown transformation
-    else if (lt < 14.0) {
-      // Deep fryer pot
-      pxRect(108, 124, 104, 42, '#4a4e59');
-      pxRect(112, 127, 96, 34, '#e39e2b'); // hot golden oil
+      // 4-8s: Dipping & pressing seasoned flour for craggy crust
+      else if (lt < 8.0) {
+        drawAO(320, 304, 104, 14, 0.28);
+        pxRect(220, 256, 200, 56, '#cfc9be');
+        pxRect(228, 262, 184, 44, '#f6ebd8');
+        const press = Math.abs(Math.sin(lt * 7)) * 6;
+        pxEllipse(320, 284 + press, 28, 17, '#f0d8b8');
+        pxEllipse(312, 280 + press, 14, 8, '#fff4df');
+        pxRect(344, 282 + press, 14, 6, '#fff6e8');
+        // Craggy irregular flour flakes
+        for (let i = 0; i < 12; i++) {
+          pxRect(298 + hash(i * 4.1) * 40, 272 + press + hash(i * 6.3) * 18, 4, 4, '#e6c89c');
+        }
+      }
+      // 8-14s: Deep frying over animated stove flames -> golden brown transformation
+      else if (lt < 14.0) {
+        drawStoveBurner(320, 312, lt, 1.15);
+        // Heavy cast-iron fryer pot
+        pxRect(216, 242, 208, 72, '#3a3e47');
+        pxRect(216, 242, 208, 6, '#585e6b');
+        pxRect(224, 248, 192, 58, '#e39e2b'); // hot golden oil
 
-      // Color shifts from pale flour -> rich golden brown!
-      const brownU = smoothstep(8.5, 13.5, lt);
-      const r = Math.round(lerp(240, 198, brownU));
-      const g = Math.round(lerp(215, 112, brownU));
-      const b = Math.round(lerp(175, 42, brownU));
-      const chickCol = `rgb(${r},${g},${b})`;
+        const brownU = smoothstep(8.4, 13.5, lt);
+        const r = Math.round(lerp(240, 198, brownU));
+        const g = Math.round(lerp(215, 112, brownU));
+        const b = Math.round(lerp(175, 42, brownU));
+        const chickCol = `rgb(${r},${g},${b})`;
 
-      const bob = Math.sin(lt * 9) * 1.5;
-      for (let i = 0; i < 3; i++) {
-        const cx = 132 + i * 28;
-        pxEllipse(cx, 143 + bob, 10, 7, chickCol);
-        pxRect(cx - 5, 139 + bob, 3, 3, '#d98a36');
+        const bob = Math.sin(lt * 9) * 3;
+        for (let i = 0; i < 3; i++) {
+          const cx = 264 + i * 56;
+          pxEllipse(cx, 278 + bob, 20, 13, chickCol);
+          pxRect(cx - 10, 270 + bob, 6, 5, '#d98a36');
+          pxRect(cx + 2, 282 + bob, 5, 4, '#a6511a');
+        }
+        // Dynamic bubbling oil rings & droplets
+        for (let i = 0; i < 34; i++) {
+          const bx = 230 + hash(i * 11 + Math.floor(lt * 14)) * 180;
+          const by = 250 + hash(i * 19 + Math.floor(lt * 14)) * 52;
+          pxCircle(bx, by, i % 3 === 0 ? 3 : 2, '#ffe48f');
+        }
+        drawSteam(320, 238, 14, lt, 88, 72);
       }
+      // 14-20s: Wire cooling rack & crunchy golden-brown reveal
+      else {
+        drawAO(320, 306, 118, 12, 0.28);
+        pxRect(204, 266, 232, 46, '#7d8590');
+        pxRect(208, 270, 224, 38, '#382e36');
+        for (let x = 220; x < 424; x += 14) {
+          pxRect(x, 270, 2, 38, '#9aa2ad');
+        }
+        for (let i = 0; i < 3; i++) {
+          const cx = 256 + i * 64;
+          pxEllipse(cx, 286, 24, 15, '#c86e28');
+          pxEllipse(cx - 4, 282, 14, 8, '#e6933c');
+          pxRect(cx + 16, 284, 14, 6, '#f7efe4');
+          // Crispy craggy flakes
+          pxRect(cx - 14, 276, 5, 4, '#f2ad4e');
+          pxRect(cx + 2, 292, 5, 4, '#a35118');
+          pxRect(cx - 4, 288, 4, 3, '#ffd07b');
+        }
+        drawSteam(320, 258, 10, lt, 68, 56);
+      }
+    });
 
-      // Bubbling oil particles!
-      for (let i = 0; i < 22; i++) {
-        const bx = 116 + hash(i * 11 + Math.floor(lt * 14)) * 88;
-        const by = 128 + hash(i * 19 + Math.floor(lt * 14)) * 28;
-        pxCircle(bx, by, i % 3 === 0 ? 2 : 1, '#ffe48f');
-      }
-      drawSteam(160, 122, 8, lt, 44);
-      pxText('Sizzling in hot oil -> golden brown!', 160, 173, '#f7e4cf', 'center');
-    }
-    // 60-66s: Lifting onto wire rack to drain, crunchy exterior reveal
-    else {
-      // Wire cooling rack
-      pxRect(104, 136, 112, 24, '#7d8590');
-      pxRect(106, 138, 108, 20, '#3a3038');
-      for (let x = 112; x < 212; x += 8) {
-        pxRect(x, 138, 1, 20, '#9aa2ad');
-      }
-      // Crispy golden fried chicken pieces
-      for (let i = 0; i < 3; i++) {
-        const cx = 128 + i * 32;
-        pxEllipse(cx, 146, 12, 8, '#c86e28');
-        pxEllipse(cx - 2, 144, 7, 4, '#e6933c'); // crunchy highlight
-        pxRect(cx + 8, 145, 7, 3, '#f7efe4');  // bone tip
-        // Irregular crispy flakes
-        pxRect(cx - 7, 141, 3, 2, '#f2ad4e');
-        pxRect(cx + 1, 149, 3, 2, '#a35118');
-      }
-      drawSteam(160, 132, 6, lt, 34);
-      pxText('Crunchy, golden & juicy!', 160, 173, '#f7e4cf', 'center');
-    }
+    let cap = '3. Marinating chicken with spices';
+    if (lt >= 4 && lt < 8) cap = 'Pressing seasoned flour for crispy crust';
+    else if (lt >= 8 && lt < 14) cap = 'Sizzling in hot oil -> golden brown!';
+    else if (lt >= 14) cap = 'Crunchy, golden & juicy!';
+    pxText(cap, W / 2, H - 14, '#f7e4cf', 'center', 13);
   }
 
   // =========================================================================
   // SCENE 4: ASSEMBLING HER TIFFIN (66s - 78s)
   // =========================================================================
   function renderScene4(lt) {
-    drawKitchenBackground(95, 0.05);
-    const look = lt > 9.0 ? 1 : 0;
-    drawChef(160, 74, lt < 6 ? lt * 4 : 0, lt < 6 ? -lt * 4 : 0, 0, look);
-
-    // Tiffin / Bento box centered on counter
-    const bx = 110, by = 126, bw = 100, bh = 38;
-    pxRect(bx, by, bw, bh, '#d9534f'); // warm red-coral tiffin
-    pxRect(bx + 3, by + 3, bw - 6, bh - 6, '#362933');
-
+    let camX = 320, camY = 226, camZ = 1.32;
     if (lt < 6.2) {
-      // Compartments
-      pxRect(bx + 6, by + 6, 42, 14, '#4a3a46');  // top-left: dumplings
-      pxRect(bx + 52, by + 6, 42, 14, '#4a3a46'); // top-right: sushi
-      pxRect(bx + 6, by + 23, 88, 10, '#4a3a46'); // bottom: fried chicken + rice cakes
-
-      // Items placed one by one
-      if (lt > 0.6) {
-        for (let i = 0; i < 3; i++) {
-          pxEllipse(bx + 15 + i * 12, by + 13, 5, 3, '#fff4df');
-        }
-      }
-      if (lt > 2.2) {
-        for (let i = 0; i < 3; i++) {
-          pxCircle(bx + 61 + i * 12, by + 13, 4, '#1f3628');
-          pxCircle(bx + 61 + i * 12, by + 13, 2, '#f27961');
-        }
-      }
-      if (lt > 3.8) {
-        pxEllipse(bx + 24, by + 28, 9, 4, '#c86e28');
-        pxEllipse(bx + 48, by + 28, 9, 4, '#c86e28');
-        pxEllipse(bx + 74, by + 28, 6, 3, '#fff8f0'); // rice cake
-        pxEllipse(bx + 86, by + 28, 5, 3, '#fff8f0');
-      }
-      pxText('Packing her tiffin with care...', 160, 173, '#f7e4cf', 'center');
+      camZ = lerp(1.42, 1.32, lt / 6.2);
+      camY = 242;
     } else {
-      // Closed tiffin with lid & heart clasp
-      pxRect(bx, by + 4, bw, bh - 4, '#e3645f');
-      pxRect(bx + 2, by + 6, bw - 4, 8, '#f07b76');
-      pxRect(bx + 44, by + 14, 12, 8, '#f7d08a'); // brass clasp
-
-      if (lt > 8.6) {
-        // Thought bubble: forgot the note!
-        pxCircle(186, 62, 2, '#fff9f0');
-        pxCircle(192, 54, 3, '#fff9f0');
-        pxRect(196, 28, 96, 24, '#fff9f0');
-        pxText('Forgot her note...', 244, 43, '#2d1e28', 'center');
-      }
-      pxText(lt > 8.6 ? 'Wait — I need to write her a note' : 'Tiffin packed!', 160, 173, '#f7e4cf', 'center');
+      const u = easeInOut(clamp((lt - 6.2) / 3.0, 0, 1));
+      camZ = lerp(1.32, 1.06, u);
+      camY = lerp(242, 186, u);
     }
+
+    withCamera(camX, camY, camZ, 0, () => {
+      drawKitchenBackground(190, 0.05, lt + 66);
+      const look = lt > 8.8 ? 1 : 0;
+      drawChef(320, 146, lt < 6 ? lt * 4 : 0, lt < 6 ? -lt * 4 : 0, 0, look, lt > 8.8 ? 'focused' : 'happy');
+
+      // Multi-compartment bento / tiffin box with contact shadow
+      const bx = 216, by = 248, bw = 208, bh = 78;
+      drawAO(320, 328, 112, 12, 0.32);
+      pxRect(bx, by, bw, bh, '#d9534f');
+      pxRect(bx + 6, by + 6, bw - 12, bh - 12, '#342631');
+
+      if (lt < 6.2) {
+        pxRect(bx + 12, by + 12, 88, 28, '#4a3a46');  // top-left: dumplings
+        pxRect(bx + 108, by + 12, 88, 28, '#4a3a46'); // top-right: sushi
+        pxRect(bx + 12, by + 44, 184, 22, '#4a3a46'); // bottom: fried chicken + rice cakes
+
+        if (lt > 0.6) {
+          for (let i = 0; i < 3; i++) {
+            const dx = bx + 28 + i * 26;
+            pxEllipse(dx, by + 26, 10, 6, '#fff4df');
+            pxRect(dx - 3, by + 22, 2, 3, '#d6bf9e');
+            pxRect(dx + 1, by + 22, 2, 3, '#d6bf9e');
+          }
+        }
+        if (lt > 2.2) {
+          for (let i = 0; i < 3; i++) {
+            const sx = bx + 124 + i * 26;
+            pxCircle(sx, by + 26, 8, '#1d3426');
+            pxCircle(sx, by + 26, 6, '#faf6ee');
+            pxCircle(sx, by + 26, 3, '#f06e54');
+          }
+        }
+        if (lt > 3.8) {
+          pxEllipse(bx + 46, by + 55, 18, 8, '#c86e28');
+          pxEllipse(bx + 42, by + 53, 10, 4, '#e6933c');
+          pxEllipse(bx + 94, by + 55, 18, 8, '#c86e28');
+          pxEllipse(bx + 90, by + 53, 10, 4, '#e6933c');
+          pxEllipse(bx + 148, by + 55, 11, 6, '#fff8f0');
+          pxEllipse(bx + 174, by + 55, 11, 6, '#fff8f0');
+        }
+      } else {
+        pxRect(bx, by + 8, bw, bh - 8, '#e3645f');
+        pxRect(bx + 4, by + 12, bw - 8, 14, '#f07b76');
+        pxRect(bx + 90, by + 28, 28, 16, '#f7d08a');
+        pxRect(bx + 98, by + 33, 12, 6, '#d9a44e');
+
+        if (lt > 8.6) {
+          pxCircle(374, 124, 4, '#fff9f0');
+          pxCircle(388, 108, 6, '#fff9f0');
+          pxRect(396, 56, 184, 46, '#fff9f0');
+          pxRect(398, 58, 180, 42, '#fffcf5');
+          pxText('Forgot her note...', 488, 84, '#2d1e28', 'center', 13);
+        }
+      }
+    });
+
+    pxText(
+      lt < 6.2 ? '4. Packing her tiffin with care...' : (lt > 8.6 ? 'Wait — I need to write her a note' : 'Tiffin packed!'),
+      W / 2, H - 14, '#f7e4cf', 'center', 13
+    );
   }
 
   // =========================================================================
-  // SCENE 5 & 6 & 7: ROOM, WINDOW, WIND & HANDWRITTEN LETTER
+  // SCENE 5 & 6 & 7: ROOM, WINDOW, WIND & HANDWRITTEN LETTER (640x360)
   // =========================================================================
   function drawStudyRoom(lt, globalT) {
     // Cozy evening study room
     pxRect(0, 0, W, H, '#1b1522');
+    // Subtle wallpaper wainscoting
+    pxRect(0, 210, W, 24, '#261d2e');
+    // Bookshelf in left background
+    pxRect(24, 52, 92, 160, '#2c1e26');
+    pxRect(30, 62, 80, 36, '#1f141c');
+    pxRect(30, 108, 80, 36, '#1f141c');
+    for (let i = 0; i < 6; i++) {
+      pxRect(34 + i * 12, 70 + (i % 2) * 4, 9, 26 - (i % 2) * 4, i % 2 === 0 ? '#7c4d52' : '#4f6d7a');
+    }
+
     // Open window on the right
-    const wx = 216, wy = 14, ww = 86, wh = 92;
-    pxRect(wx - 4, wy - 4, ww + 8, wh + 8, '#3b2832');
-    pxRect(wx, wy, ww, wh, '#222b45'); // twilight sky
-    pxRect(wx, wy + 52, ww, 40, '#363b5e');
-    // Stars
-    pxRect(wx + 16, wy + 14, 1, 1, '#fff3cf');
-    pxRect(wx + 58, wy + 22, 1, 1, '#fff3cf');
-    pxRect(wx + 38, wy + 9, 2, 2, '#ffe9a8');
+    const wx = 432, wy = 28, ww = 172, wh = 184;
+    pxRect(wx - 8, wy - 8, ww + 16, wh + 16, '#3b2832');
+    pxRect(wx, wy, ww, wh, '#222b45');
+    pxRect(wx, wy + 104, ww, 80, '#363b5e');
+    // Stars & crescent moon
+    pxRect(wx + 32, wy + 28, 2, 2, '#fff3cf');
+    pxRect(wx + 116, wy + 44, 2, 2, '#fff3cf');
+    pxRect(wx + 76, wy + 18, 3, 3, '#ffe9a8');
+    pxCircle(wx + 136, wy + 34, 10, '#ffe9a8');
+    pxCircle(wx + 140, wy + 32, 9, '#222b45');
 
     // Curtain swaying (stronger wind during Scene 6!)
-    const windAmt = globalT >= 108.5 && globalT < 115 ? Math.sin(globalT * 10) * 10 + 10 : Math.sin(globalT * 2) * 2;
+    const windAmt = globalT >= 108.5 && globalT < 115 ? Math.sin(globalT * 10) * 20 + 20 : Math.sin(globalT * 2) * 4;
     ctx.fillStyle = '#d9b5a0';
     ctx.beginPath();
     ctx.moveTo(wx, wy);
-    ctx.lineTo(wx + 18, wy);
-    ctx.lineTo(wx + 14 - windAmt, wy + wh);
+    ctx.lineTo(wx + 36, wy);
+    ctx.lineTo(wx + 28 - windAmt, wy + wh);
     ctx.lineTo(wx, wy + wh);
     ctx.closePath();
     ctx.fill();
 
     // Warm desk lamp on left
-    pxRect(22, 92, 16, 4, '#8c6239');
-    pxRect(28, 56, 4, 36, '#8c6239');
-    pxRect(18, 42, 26, 16, '#f4b860');
-    ctx.fillStyle = 'rgba(255, 200, 120, 0.14)';
-    ctx.beginPath();
-    ctx.moveTo(18, 58);
-    ctx.lineTo(44, 58);
-    ctx.lineTo(140, 168);
-    ctx.lineTo(0, 168);
-    ctx.closePath();
-    ctx.fill();
+    pxRect(44, 184, 32, 8, '#8c6239');
+    pxRect(56, 112, 8, 72, '#8c6239');
+    pxRect(36, 84, 52, 32, '#f4b860');
+    const lampCone = ctx.createRadialGradient(62, 116, 10, 120, 230, 260);
+    lampCone.addColorStop(0, 'rgba(255, 205, 125, 0.24)');
+    lampCone.addColorStop(1, 'rgba(255, 185, 105, 0)');
+    ctx.fillStyle = lampCone;
+    ctx.fillRect(0, 80, 380, 280);
 
     // Wooden desk
-    pxRect(0, 114, W, 66, '#5c3c2e');
-    pxRect(0, 114, W, 4, '#734b39');
+    pxRect(0, 228, W, 132, '#5c3c2e');
+    pxRect(0, 228, W, 8, '#734b39');
 
     // Doorbell chime visual at 106.0 - 108.5s
     if (globalT >= 106.0 && globalT < 108.5) {
       const p = (globalT - 106.0) * 2;
-      pxText('DING-DONG!', 52, 26, '#ffe58f', 'center');
+      pxText('DING-DONG!', 110, 52, '#ffe58f', 'center', 15);
       ctx.strokeStyle = `rgba(255, 230, 140, ${clamp(1 - p * 0.4, 0, 1)})`;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(52, 24, 10 + (p * 18) % 24, 0, Math.PI * 2);
+      ctx.arc(110, 48, 20 + (p * 36) % 48, 0, Math.PI * 2);
       ctx.stroke();
     }
 
     // Gust of wind streaks in Scene 6
     if (globalT >= 108.5 && globalT < 115.5) {
-      for (let i = 0; i < 9; i++) {
-        const wyLine = 32 + i * 14;
-        const wxLine = (290 - ((globalT - 108.5) * 140 + i * 37) % 340);
-        pxLine(wxLine, wyLine, wxLine - 28, wyLine + 4, 'rgba(210, 230, 255, 0.45)');
+      for (let i = 0; i < 12; i++) {
+        const wyLine = 54 + i * 24;
+        const wxLine = (580 - ((globalT - 108.5) * 280 + i * 64) % 680);
+        pxLine(wxLine, wyLine, wxLine - 56, wyLine + 8, 'rgba(210, 230, 255, 0.45)');
       }
     }
   }
