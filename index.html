@@ -375,6 +375,172 @@
   }
 
   // =========================================================================
+  // PIXEL-ART SPRITE COMPILER & HAND-CRAFTED FOOD/PROP SPRITE SHEET
+  // =========================================================================
+  function makeSprite(rows, palette) {
+    const h = rows.length;
+    const w = rows[0].length;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d');
+    for (let y = 0; y < h; y++) {
+      const row = rows[y];
+      for (let x = 0; x < w; x++) {
+        const ch = row[x];
+        if (ch !== '.' && palette[ch]) {
+          g.fillStyle = palette[ch];
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+    return c;
+  }
+
+  function drawSprite(spr, x, y, scale = 1, flipX = false, alpha = 1) {
+    ctx.save();
+    if (alpha < 1) ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = false;
+    const dw = Math.round(spr.width * scale);
+    const dh = Math.round(spr.height * scale);
+    const dx = Math.round(x - dw / 2);
+    const dy = Math.round(y - dh / 2);
+    if (flipX) {
+      ctx.translate(dx + dw, dy);
+      ctx.scale(-1, 1);
+      ctx.drawImage(spr, 0, 0, dw, dh);
+    } else {
+      ctx.drawImage(spr, dx, dy, dw, dh);
+    }
+    ctx.restore();
+  }
+
+  // Pleated Steamed Dumpling (22x14)
+  const SPR_DUMPLING = makeSprite([
+    '.......oooooooo.......',
+    '.....ooHLLmLLHloo.....',
+    '...ooHLmLMmmMLmLloo...',
+    '..oHLLmLMmMMmMLmLLlo..',
+    '.oHLLmLMmMMMMmMLmLLmo.',
+    '.oLmMMMMMMmmMMMMMMmLo.',
+    'oLmMMMmMMMMMMMMmMMMmLo',
+    'oLmSSSSSSSSSSSSSSSSmLo',
+    'oSSSSSSSSSSSSSSSSSSSSo',
+    '.oSSDDDDDDDDDDDDDDSSo.',
+    '..ooDDDDDDDDDDDDDDoo..',
+    '....oooooooooooooo....',
+  ], {
+    o: '#24171c', H: '#ffffff', L: '#fbf2e2', m: '#e8d5b8',
+    M: '#cbb392', l: '#f4e6cf', S: '#d4bc9b', D: '#a88c6c'
+  });
+
+  // Salmon Nigiri (26x16) — inspired by reference sprite sheet
+  const SPR_NIGIRI = makeSprite([
+    '.......oooooooooo.........',
+    '.....ooOOFOOOFOOOoo.......',
+    '...ooOOFSOOOFSOOFOOoo.....',
+    '..oOOFSOOOFSOOOFSOOFOo....',
+    '.oOFSOOOFSOOOFSOOOFSOOo...',
+    'oOFSOOOFSDDDDFSOOOFSDDFo..',
+    'oOSDDDFSDDDDDDDDDDDDDDFOo.',
+    '.ooDDDDooRRRRRRRRRooooooo.',
+    '...oooo.oRRRrrrRRRro......',
+    '........oRRrrrrrRRRo......',
+    '........oRrrBBrrrRRo......',
+    '.........ooBBBBBBoo.......',
+    '...........oooooo.........',
+  ], {
+    o: '#1a1116', O: '#eb6838', F: '#ffbfa8', S: '#f78d56',
+    D: '#b84225', R: '#faf4ea', r: '#e3d8c8', B: '#bfb19f'
+  });
+
+  // Maki Sushi Roll (18x16)
+  const SPR_MAKI = makeSprite([
+    '....oooooooooo....',
+    '..ooNNNNNNNNNNoo..',
+    '.oNNRRRRRRRRRRNNo.',
+    'oNNRRrRRrrRRrRRNNo',
+    'oNRRrRoooooORrRNNo',
+    'oNRrRoOOFFoGOrRNNo',
+    'oNRrRoOOFooGOrRNNo',
+    'oNRrRoSSSSGGorRNNo',
+    'oNNRrRooooooRrRNNo',
+    'oNNRRRRrrrrRRRRNNo',
+    'oNnnRRRRRRRRRRnnNo',
+    '.oNnnnnNNNNnnnnNo.',
+    '..ooNNNNNNNNNNoo..',
+    '....oooooooooo....',
+  ], {
+    o: '#151218', N: '#263d34', n: '#192923', R: '#f8f3eb',
+    r: '#dcd1c2', O: '#eb6838', F: '#ffbca4', S: '#c44627', G: '#63a84f'
+  });
+
+  // Crispy Fried Chicken Drumstick (28x18) — 5-tone dithered crust
+  const SPR_DRUMSTICK = makeSprite([
+    '.................oooooo.....',
+    '................oBBBBBBoo...',
+    '...............oBWWWWWWWBo..',
+    '..........ooooooBBWWWWWWBo..',
+    '.......oooGGYGGYBBBWWWWBo...',
+    '.....ooGYGYYGGGGYBBBBBoo....',
+    '...ooGYYGGMDMGGYYGGBBo......',
+    '..oGYGMDMDDMDDMGGYGBo.......',
+    '.oGYMDDSSSSDDDDMDGYo........',
+    '.oYMDDSSKKSSSDDDMGYo........',
+    'oGYMDSKKKKSSSDDDMGo.........',
+    'oGYMDDSSKKSSDDMMGo..........',
+    '.oYMDDDDDDDDMMGoo...........',
+    '.ooGMMMMMMMMGoo.............',
+    '...oooooooooo...............',
+  ], {
+    o: '#1b1008', W: '#f8efe2', B: '#d9c5aa', G: '#e08222',
+    Y: '#ffd76a', M: '#b54c14', D: '#8c2d0d', S: '#6b1e08', K: '#4f1505'
+  });
+
+  // Crispy Fried Chicken Thigh (24x16)
+  const SPR_THIGH = makeSprite([
+    '.......oooooooooo.......',
+    '....oooGGGGYGGGGGoo.....',
+    '..ooGYGYGGGGGGYGGGGoo...',
+    '.oGYGMDMGGYYGGMDMGGGGo..',
+    'oGYMDDSSDDMMDDDDSSDMGGo.',
+    'oGMDDSSKKSSDDDDSSKKDMGo.',
+    'oGMDDSSSSSDDDDDSSSSDMGo.',
+    '.oYMDDDDMMDDDDDDMMMDGo..',
+    '.ooGMMMMGGMMMMMMGGGoo...',
+    '...oooooooooooooooo.....',
+  ], {
+    o: '#1b1008', G: '#e08222', Y: '#ffd76a', M: '#b54c14',
+    D: '#8c2d0d', S: '#6b1e08', K: '#4f1505'
+  });
+
+  // Steamed Rice Cake (14x10)
+  const SPR_RICE_CAKE = makeSprite([
+    '...oooooooo...',
+    '.ooHHLLLLLLoo.',
+    'oHHLLLLLLLLLLo',
+    'oLLLLLLLLLLSSo',
+    'oLLSSSSSSSSSSo',
+    '.ooDDDDDDDDoo.',
+    '...oooooooo...',
+  ], {
+    o: '#241a20', H: '#ffffff', L: '#faf4ea', S: '#e0d6c6', D: '#bfb3a3'
+  });
+
+  // Chef Knife (30x10)
+  const SPR_KNIFE = makeSprite([
+    '..................oooooooooooo',
+    '....ooooooooooooooBBBBBBBBBBBoo',
+    '..ooHHHHHHHHHHHHHHBBBBBBBBBBBBo',
+    '.oHHMMMMMMMMMMMMMMBBBBBBBBBBBoo',
+    'oHMMSSSSSSSSSSSSSSooooooooooo..',
+    'oSSSSSSSSSSSSSSSSo............',
+    '.oooooooooooooooo.............',
+  ], {
+    o: '#19141c', H: '#ffffff', M: '#d7e2e8', S: '#9fb0ba', B: '#4a3026'
+  });
+
+  // =========================================================================
   // PROCEDURAL WEB AUDIO ENGINE
   // =========================================================================
   let audioCtx = null;
@@ -589,84 +755,100 @@
   // =========================================================================
   // SHARED PIXEL-ART CHARACTER & KITCHEN ENVIRONMENT (640x360)
   // =========================================================================
+  function drawOutlinedRect(x, y, w, h, fill, outline = '#1b1218') {
+    pxRect(x - 1, y - 1, w + 2, h + 2, outline);
+    pxRect(x, y, w, h, fill);
+  }
+
   function drawKitchenBackground(panX = 0, warmBoost = 0, time = 0) {
-    // Rich warm plaster wall + brick/tile backsplash
-    pxRect(-80, -40, W + 160, 260, '#32242f');
-    pxRect(-80, 100, W + 160, 128, '#3d2d39');
+    // Layer 0 (Far): Warm plaster wall + brick/tile backsplash
+    pxRect(-80, -40, W + 160, 260, '#2c1f29');
+    pxRect(-80, 100, W + 160, 128, '#382834');
     for (let y = 104; y < 224; y += 16) {
       const rowOffset = ((y / 16) | 0) % 2 === 0 ? 0 : 14;
-      for (let x = -80 - ((panX * 0.7) | 0) % 28 + rowOffset; x < W + 80; x += 28) {
-        pxRect(x, y, 26, 14, '#4c3947');
-        pxRect(x, y, 26, 2, '#5e4858');
-        pxRect(x, y + 13, 26, 1, '#31232d');
+      for (let x = -80 - ((panX * 0.55) | 0) % 28 + rowOffset; x < W + 80; x += 28) {
+        pxRect(x, y, 26, 14, '#4b3745');
+        pxRect(x, y, 26, 2, '#614959');
+        pxRect(x, y + 13, 26, 1, '#2a1d26');
       }
     }
+
+    // Upper Wooden Kitchen Cabinets (Right & Far-Left parallax)
+    const cxRight = 505 - panX * 0.5;
+    drawOutlinedRect(cxRight, 14, 118, 78, '#5a392d');
+    pxRect(cxRight + 5, 19, 51, 68, '#6e4738');
+    pxRect(cxRight + 62, 19, 51, 68, '#6e4738');
+    pxRect(cxRight + 51, 46, 3, 12, '#e8b968'); // brass handles
+    pxRect(cxRight + 64, 46, 3, 12, '#e8b968');
 
     // Hanging warm pendant lamp
     const lx = 320 - panX * 0.35;
-    pxRect(lx - 1, -20, 2, 42, '#1f171d');
-    pxRect(lx - 18, 22, 36, 10, '#c87e42');
-    pxRect(lx - 22, 30, 44, 5, '#e8a25d');
+    pxRect(lx - 1, -20, 2, 42, '#1b1218');
+    drawOutlinedRect(lx - 18, 22, 36, 10, '#c87e42');
+    drawOutlinedRect(lx - 22, 30, 44, 5, '#e8a25d');
     pxRect(lx - 6, 35, 12, 4, '#fff2c2');
-    const lampGlow = ctx.createRadialGradient(lx, 40, 8, lx, 110, 260);
-    lampGlow.addColorStop(0, `rgba(255, 208, 132, ${0.22 + warmBoost})`);
-    lampGlow.addColorStop(1, 'rgba(255, 180, 100, 0)');
+    const lampGlow = ctx.createRadialGradient(lx, 40, 8, lx, 110, 270);
+    lampGlow.addColorStop(0, `rgba(255, 204, 124, ${0.24 + warmBoost})`);
+    lampGlow.addColorStop(1, 'rgba(255, 175, 95, 0)');
     ctx.fillStyle = lampGlow;
     ctx.fillRect(-60, 0, W + 120, H);
 
-    // Cozy window on left with lush potted herbs & sunbeam
-    const wx = 38 - panX * 0.45;
-    pxRect(wx - 4, 24, 116, 106, '#231822');
-    pxRect(wx, 28, 108, 98, '#f6b97a');
-    pxRect(wx, 28, 108, 46, '#fbd8a4');
-    // Distant pixel buildings / trees outside window
-    pxRect(wx + 8, 86, 28, 40, '#c48367');
-    pxRect(wx + 44, 76, 36, 50, '#b5725b');
-    pxRect(wx + 84, 90, 20, 36, '#9e6253');
+    // Cozy window on left with twilight/evening sky, reflections & potted herbs
+    const wx = 34 - panX * 0.45;
+    drawOutlinedRect(wx - 4, 24, 116, 106, '#2e1f28');
+    pxRect(wx, 28, 108, 98, '#2b3352'); // deep twilight sky
+    pxRect(wx, 70, 108, 56, '#484569');
+    // Warm sunset horizon glow + stars
+    pxRect(wx, 96, 108, 30, '#9e6263');
+    pxRect(wx + 18, 38, 2, 2, '#fff3cf');
+    pxRect(wx + 74, 46, 2, 2, '#fff3cf');
+    pxRect(wx + 42, 33, 2, 2, '#ffe9a8');
+    // Distant silhouetted rooftops with lit pixel windows
+    pxRect(wx + 8, 86, 28, 40, '#221b2b');
+    pxRect(wx + 16, 94, 4, 5, '#ffd478');
+    pxRect(wx + 44, 76, 36, 50, '#1c1624');
+    pxRect(wx + 54, 86, 4, 5, '#ffd478');
+    pxRect(wx + 66, 96, 4, 5, '#ffd478');
+    // Subtle diagonal glass reflections
+    pxLine(wx + 12, 34, wx + 32, 66, 'rgba(255, 235, 210, 0.22)');
+    pxLine(wx + 64, 40, wx + 92, 86, 'rgba(255, 235, 210, 0.18)');
     // Mullions
-    pxRect(wx + 53, 28, 3, 98, '#36232e');
-    pxRect(wx, 75, 108, 3, '#36232e');
-    // Potted herbs on sill
-    pxRect(wx + 12, 112, 18, 14, '#b86246');
-    pxCircle(wx + 21, 106, 9, '#4c8c4a');
-    pxCircle(wx + 17, 103, 5, '#6cb365');
-    pxRect(wx + 76, 114, 16, 12, '#c88b5a');
-    pxCircle(wx + 84, 109, 7, '#589955');
-    // Diagonal volumetric sunbeam
-    ctx.fillStyle = `rgba(255, 224, 168, ${0.09 + warmBoost * 0.5})`;
-    ctx.beginPath();
-    ctx.moveTo(wx, 126);
-    ctx.lineTo(wx + 108, 126);
-    ctx.lineTo(wx + 195, 290);
-    ctx.lineTo(wx + 24, 290);
-    ctx.closePath();
-    ctx.fill();
+    pxRect(wx + 53, 28, 3, 98, '#2e1f28');
+    pxRect(wx, 75, 108, 3, '#2e1f28');
+    // Outlined potted herbs on sill
+    drawOutlinedRect(wx + 12, 112, 18, 14, '#b86246');
+    pxCircle(wx + 21, 106, 9, '#1b1218');
+    pxCircle(wx + 21, 106, 7, '#4c8c4a');
+    pxCircle(wx + 18, 104, 4, '#70bd68');
+    drawOutlinedRect(wx + 76, 114, 16, 12, '#c88b5a');
+    pxCircle(wx + 84, 109, 7, '#1b1218');
+    pxCircle(wx + 84, 109, 5, '#589955');
 
-    // Wooden shelf with detailed jars, hanging copper pans & utensils
-    const sx = 235 - panX * 0.55;
-    pxRect(sx, 54, 250, 7, '#6d4536');
-    pxRect(sx, 61, 250, 3, '#4a2d22');
-    // Jars on shelf
-    pxRect(sx + 14, 26, 22, 28, '#e3d8c8'); pxRect(sx + 16, 22, 18, 4, '#9e6b43'); // flour/sugar
-    pxRect(sx + 44, 32, 18, 22, '#c9745d'); pxRect(sx + 46, 28, 14, 4, '#70432d'); // paprika
-    pxRect(sx + 70, 28, 20, 26, '#87ab7e'); pxRect(sx + 74, 16, 12, 12, '#5a8f52'); // herb jar
-    pxRect(sx + 102, 24, 22, 30, '#e6b873'); pxRect(sx + 107, 16, 12, 8, '#382a24'); // sesame oil
-    pxRect(sx + 136, 30, 18, 24, '#6d4238'); pxRect(sx + 139, 25, 12, 5, '#d9a45b'); // soy sauce
-    pxRect(sx + 166, 28, 22, 26, '#d9cfc1'); pxRect(sx + 170, 24, 14, 4, '#c45b4b'); // spice
-    // Hanging copper pans & ladle below shelf
+    // Wooden shelf with outlined jars, hanging copper pans & utensils
+    const sx = 230 - panX * 0.55;
+    drawOutlinedRect(sx, 54, 252, 7, '#6d4536');
+    pxRect(sx, 61, 252, 3, '#4a2d22');
+    drawOutlinedRect(sx + 14, 26, 22, 28, '#e3d8c8'); drawOutlinedRect(sx + 16, 22, 18, 4, '#9e6b43');
+    drawOutlinedRect(sx + 44, 32, 18, 22, '#c9745d'); drawOutlinedRect(sx + 46, 28, 14, 4, '#70432d');
+    drawOutlinedRect(sx + 70, 28, 20, 26, '#87ab7e'); drawOutlinedRect(sx + 74, 16, 12, 12, '#5a8f52');
+    drawOutlinedRect(sx + 102, 24, 22, 30, '#e6b873'); drawOutlinedRect(sx + 107, 16, 12, 8, '#382a24');
+    drawOutlinedRect(sx + 136, 30, 18, 24, '#6d4238'); drawOutlinedRect(sx + 139, 25, 12, 5, '#d9a45b');
+    drawOutlinedRect(sx + 166, 28, 22, 26, '#d9cfc1'); drawOutlinedRect(sx + 170, 24, 14, 4, '#c45b4b');
     for (let i = 0; i < 3; i++) {
       const hx = sx + 204 + i * 18;
-      pxRect(hx, 64, 2, 18, '#8a919c');
+      pxRect(hx, 64, 2, 18, '#1b1218');
       if (i < 2) {
+        pxCircle(hx + 1, 88, 8 - i, '#1b1218');
         pxCircle(hx + 1, 88, 7 - i, '#c97a4b');
-        pxCircle(hx, 87, 4 - i, '#e69d6c');
+        pxCircle(hx, 87, 4 - i, '#f0a675');
       } else {
-        pxRect(hx - 2, 82, 6, 8, '#cfd8dc');
+        drawOutlinedRect(hx - 2, 82, 6, 8, '#cfd8dc');
       }
     }
 
-    // Wooden countertop with bevel, highlights & wood grain
-    pxRect(-80, 224, W + 160, 10, '#ebd8c0');
+    // Foreground wooden countertop with dark edge outline, bevel & grain
+    pxRect(-80, 223, W + 160, 2, '#1b1218');
+    pxRect(-80, 225, W + 160, 9, '#ebd8c0');
     pxRect(-80, 234, W + 160, 136, '#c49366');
     pxRect(-80, 234, W + 160, 3, '#a47449');
     for (let i = 0; i < 14; i++) {
@@ -678,53 +860,48 @@
   }
 
   function drawChef(cx, cy, armLAngle, armRAngle, headTilt = 0, lookDir = 0, expression = 'happy') {
-    // Contact shadow behind torso on counter
-    drawAO(cx, cy + 88, 32, 8, 0.22);
+    drawAO(cx, cy + 88, 34, 9, 0.25);
 
-    // Cozy dark-slate hoodie/sweater with shaded folds
-    pxRect(cx - 28, cy + 32, 56, 58, '#465d6b');
-    pxRect(cx - 28, cy + 32, 10, 58, '#384b57'); // left shadow
-    pxRect(cx + 18, cy + 32, 10, 58, '#5a7687'); // warm rim highlight
-    // Apron
-    pxRect(cx - 20, cy + 36, 40, 54, '#f5ead9');
-    pxRect(cx - 20, cy + 36, 6, 54, '#e2d2bc');
-    pxRect(cx - 20, cy + 32, 4, 12, '#dfd0ba');
-    pxRect(cx + 16, cy + 32, 4, 12, '#dfd0ba');
-    // Stitched heart on apron pocket
+    // Outlined cozy slate hoodie/sweater
+    drawOutlinedRect(cx - 28, cy + 32, 56, 58, '#465d6b');
+    pxRect(cx - 28, cy + 32, 10, 58, '#354752');
+    pxRect(cx + 18, cy + 32, 10, 58, '#5f7d8f');
+    // Outlined apron
+    drawOutlinedRect(cx - 20, cy + 36, 40, 54, '#f5ead9');
+    pxRect(cx - 20, cy + 36, 6, 54, '#e0cfb7');
+    drawOutlinedRect(cx - 20, cy + 32, 4, 12, '#dfd0ba');
+    drawOutlinedRect(cx + 16, cy + 32, 4, 12, '#dfd0ba');
     pxRect(cx - 12, cy + 64, 24, 18, '#eadbc6');
     pxRect(cx - 4, cy + 48, 3, 3, '#df6262');
     pxRect(cx + 1, cy + 48, 3, 3, '#df6262');
     pxRect(cx - 3, cy + 51, 6, 3, '#df6262');
     pxRect(cx - 1, cy + 54, 2, 2, '#df6262');
 
-    // Neck & Head
+    // Neck & Outlined Head
     const hx = cx + headTilt;
     const hy = cy;
-    pxRect(hx - 6, hy + 24, 12, 12, '#dfb092');
-    pxRect(hx - 18, hy - 4, 36, 32, '#f2c4a6');
-    pxRect(hx - 18, hy - 4, 6, 32, '#e2af8f'); // face shadow
-    // Messy dark pixel hair (inspired by reference character!)
-    pxRect(hx - 21, hy - 14, 42, 14, '#241b26');
-    pxRect(hx - 22, hy - 6, 7, 18, '#241b26');
-    pxRect(hx + 15, hy - 6, 7, 18, '#241b26');
-    pxRect(hx - 16, hy - 17, 10, 5, '#241b26');
-    pxRect(hx + 4, hy - 18, 12, 6, '#241b26');
-    pxRect(hx - 12, hy - 12, 16, 3, '#3d2f40'); // hair highlight
-    // Bangs strands
-    pxRect(hx - 12, hy - 2, 5, 6, '#241b26');
-    pxRect(hx - 2, hy - 2, 6, 5, '#241b26');
-    pxRect(hx + 8, hy - 2, 5, 6, '#241b26');
+    drawOutlinedRect(hx - 6, hy + 24, 12, 12, '#dfb092');
+    drawOutlinedRect(hx - 18, hy - 4, 36, 32, '#f2c4a6');
+    pxRect(hx - 18, hy - 4, 6, 32, '#e2af8f');
+    // Messy dark pixel hair with outline
+    pxRect(hx - 22, hy - 15, 44, 15, '#1b1218');
+    pxRect(hx - 21, hy - 14, 42, 14, '#291f2b');
+    pxRect(hx - 22, hy - 6, 7, 18, '#291f2b');
+    pxRect(hx + 15, hy - 6, 7, 18, '#291f2b');
+    pxRect(hx - 16, hy - 17, 10, 5, '#291f2b');
+    pxRect(hx + 4, hy - 18, 12, 6, '#291f2b');
+    pxRect(hx - 12, hy - 12, 16, 3, '#443547');
+    pxRect(hx - 12, hy - 2, 5, 6, '#291f2b');
+    pxRect(hx - 2, hy - 2, 6, 5, '#291f2b');
+    pxRect(hx + 8, hy - 2, 5, 6, '#291f2b');
 
-    // Expressive eyes
     const ex = lookDir * 4;
     pxRect(hx - 10 + ex, hy + 9, 4, 5, '#19131c');
     pxRect(hx + 6 + ex, hy + 9, 4, 5, '#19131c');
-    pxRect(hx - 9 + ex, hy + 10, 1, 2, '#ffffff'); // eye shine
+    pxRect(hx - 9 + ex, hy + 10, 1, 2, '#ffffff');
     pxRect(hx + 7 + ex, hy + 10, 1, 2, '#ffffff');
-    // Eyebrows
     pxRect(hx - 11 + ex, hy + 6, 6, 2, '#241b26');
     pxRect(hx + 5 + ex, hy + 6, 6, 2, '#241b26');
-    // Blush & mouth
     pxRect(hx - 14 + ex, hy + 16, 6, 3, '#e89082');
     pxRect(hx + 8 + ex, hy + 16, 6, 3, '#e89082');
     if (expression === 'focused') {
@@ -735,40 +912,54 @@
       pxRect(hx + 3 + ex, hy + 19, 2, 1, '#9c564a');
     }
 
-    // Arms & detailed hands reaching toward prep area
+    // Outlined arms & hands
     const lx = cx - 30 + Math.sin(armLAngle) * 10;
     const ly = cy + 68 + Math.cos(armLAngle) * 6;
-    ctx.strokeStyle = '#465d6b';
-    ctx.lineWidth = 8;
     ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1b1218'; ctx.lineWidth = 10;
     ctx.beginPath(); ctx.moveTo(cx - 24, cy + 42); ctx.lineTo(lx, ly); ctx.stroke();
+    ctx.strokeStyle = '#465d6b'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(cx - 24, cy + 42); ctx.lineTo(lx, ly); ctx.stroke();
+    pxCircle(lx, ly, 7, '#1b1218');
     pxCircle(lx, ly, 6, '#f2c4a6');
-    pxCircle(lx + 2, ly - 1, 3, '#f7d6be');
 
     const rx = cx + 30 + Math.sin(armRAngle) * 10;
     const ry = cy + 68 + Math.cos(armRAngle) * 6;
+    ctx.strokeStyle = '#1b1218'; ctx.lineWidth = 10;
     ctx.beginPath(); ctx.moveTo(cx + 24, cy + 42); ctx.lineTo(rx, ry); ctx.stroke();
+    ctx.strokeStyle = '#465d6b'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(cx + 24, cy + 42); ctx.lineTo(rx, ry); ctx.stroke();
+    pxCircle(rx, ry, 7, '#1b1218');
     pxCircle(rx, ry, 6, '#f2c4a6');
-    pxCircle(rx - 2, ry - 1, 3, '#f7d6be');
   }
 
-  // Detailed foreground pixel-art hands for POV & macro close-up shots
+  // Articulated outlined foreground pixel-art hands for POV & macro shots
   function drawForegroundHand(x, y, side = 1, pinch = 0, gripOffset = 0) {
-    // Forearm sleeve
+    ctx.save();
+    ctx.fillStyle = '#1b1218';
+    ctx.beginPath();
+    ctx.ellipse(Math.round(x + side * 48), Math.round(y + 28), 30, 15, side * 0.35, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#465d6b';
     ctx.beginPath();
     ctx.ellipse(Math.round(x + side * 48), Math.round(y + 28), 28, 13, side * 0.35, 0, Math.PI * 2);
     ctx.fill();
-    // Wrist & palm
-    pxEllipse(x + side * 18, y + 10, 16, 11, '#efb999');
-    pxEllipse(x + side * 14, y + 8, 12, 8, '#f6cfb4');
-    // Fingers curving inward
+    ctx.restore();
+
+    // Outlined wrist & palm
+    pxEllipse(x + side * 18, y + 10, 17, 12, '#1b1218');
+    pxEllipse(x + side * 18, y + 10, 15, 10, '#efb999');
+    pxEllipse(x + side * 14, y + 8, 11, 7, '#f6cfb4');
+    // Articulated fingers with outlines & knuckle highlights
     const p = pinch * 5;
-    pxEllipse(x - side * 2 + p * side, y - 2 + gripOffset, 7, 4, '#f6cfb4');
-    pxEllipse(x - side * 5 + p * side, y + 4 + gripOffset, 7, 4, '#efb999');
-    pxEllipse(x - side * 3 + p * side, y + 10, 6, 4, '#e3a886');
-    // Thumb
-    pxEllipse(x + side * 4, y - 6 + p * 0.5, 6, 4, '#f8d8c0');
+    pxEllipse(x - side * 2 + p * side, y - 2 + gripOffset, 8, 5, '#1b1218');
+    pxEllipse(x - side * 2 + p * side, y - 2 + gripOffset, 6, 3, '#f6cfb4');
+    pxEllipse(x - side * 5 + p * side, y + 4 + gripOffset, 8, 5, '#1b1218');
+    pxEllipse(x - side * 5 + p * side, y + 4 + gripOffset, 6, 3, '#efb999');
+    pxEllipse(x - side * 3 + p * side, y + 10, 7, 5, '#1b1218');
+    pxEllipse(x - side * 3 + p * side, y + 10, 5, 3, '#e3a886');
+    pxEllipse(x + side * 4, y - 6 + p * 0.5, 7, 5, '#1b1218');
+    pxEllipse(x + side * 4, y - 6 + p * 0.5, 5, 3, '#f8d8c0');
   }
 
   // =========================================================================
@@ -915,14 +1106,11 @@
       // 13.5-17s: First-person POV macro — placing filling & folding individual pleats!
       else if (lt < 17.0) {
         const foldU = smoothstep(14.0, 16.6, lt);
-        // Wooden tray of already-folded pleated dumplings in background
+        // Tray of already-folded pleated dumplings in background
         for (let i = 0; i < 4; i++) {
           const dx = 226 + i * 62;
-          drawAO(dx, 268, 16, 6, 0.22);
-          pxEllipse(dx, 262, 15, 10, '#f7ebd4');
-          for (let p = -3; p <= 3; p++) {
-            pxRect(dx + p * 3, 254 + Math.abs(p), 2, 4, '#d6bf9e');
-          }
+          drawAO(dx, 268, 18, 6, 0.24);
+          drawSprite(SPR_DUMPLING, dx, 258, 1.8);
         }
         // Hero dumpling in foreground hands!
         const pinch = Math.abs(Math.sin(lt * 10));
@@ -963,10 +1151,7 @@
         // Glossy pleated dumplings inside
         const spots = [[-28, -14], [0, -20], [28, -14], [-16, -4], [16, -4]];
         spots.forEach(([ox, oy]) => {
-          pxEllipse(sx + ox, sy + oy, 13, 8, '#fff2db');
-          pxRect(sx + ox - 5, sy + oy - 5, 6, 2, '#ffffff');
-          pxRect(sx + ox - 4, sy + oy - 6, 2, 4, '#d6bf9e');
-          pxRect(sx + ox + 1, sy + oy - 6, 2, 4, '#d6bf9e');
+          drawSprite(SPR_DUMPLING, sx + ox, sy + oy, 1.5);
         });
 
         let lidOffset = 0;
@@ -1085,10 +1270,10 @@
 
         // Right: Steaming white rice cakes (tteok)
         drawAO(392, 296, 46, 11, 0.25);
-        pxEllipse(392, 288, 42, 15, '#8a6b5e');
+        pxEllipse(392, 288, 42, 15, '#1b1218');
+        pxEllipse(392, 288, 40, 13, '#8a6b5e');
         for (let i = 0; i < 4; i++) {
-          pxEllipse(366 + i * 17, 282, 10, 6, '#fff8f0');
-          pxRect(363 + i * 17, 279, 5, 2, '#ffffff');
+          drawSprite(SPR_RICE_CAKE, 366 + i * 17, 282, 1.5);
         }
         drawSteam(392, 266, 10, lt + 0.5, 34, 52);
       }
@@ -1127,32 +1312,25 @@
       else {
         if (lt < 19.0) {
           for (let i = 0; i < 6; i++) {
-            const rx = 236 + i * 28;
-            pxRect(rx, 274, 22, 24, '#1d3426');
-            pxRect(rx + 4, 278, 14, 16, '#faf6ee');
-            pxRect(rx + 8, 282, 6, 8, '#f06e54');
-            pxRect(rx + 8, 288, 6, 3, '#68ad51');
+            drawSprite(SPR_MAKI, 246 + i * 28, 284, 1.5);
           }
           const kx = 256 + Math.floor((lt - 16.0) * 2) * 28;
-          pxRect(kx, 252, 4, 36, '#e3edf2');
-          pxRect(kx, 252, 1, 36, '#ffffff');
+          drawSprite(SPR_KNIFE, kx, 262, 1.6);
         } else {
-          // Dark glazed ceramic platter
-          drawAO(320, 304, 122, 12, 0.3);
-          pxRect(204, 258, 232, 54, '#243140');
-          pxRect(210, 262, 220, 46, '#324357');
-          for (let i = 0; i < 6; i++) {
-            const sx = 230 + (i % 3) * 36;
-            const sy = 274 + Math.floor(i / 3) * 20;
-            pxCircle(sx, sy, 9, '#1d3426');
-            pxCircle(sx, sy, 7, '#faf6ee');
-            pxCircle(sx, sy, 4, '#f06e54');
-            pxRect(sx + 1, sy + 1, 2, 2, '#68ad51');
+          // Dark glazed ceramic platter with sushi & rice cakes
+          drawAO(320, 304, 126, 12, 0.3);
+          drawOutlinedRect(202, 256, 236, 56, '#243140');
+          pxRect(210, 262, 220, 44, '#324357');
+          // Salmon Nigiri top-left
+          drawSprite(SPR_NIGIRI, 238, 276, 1.6);
+          drawSprite(SPR_NIGIRI, 272, 276, 1.6);
+          // Maki sushi rolls bottom-left
+          for (let i = 0; i < 3; i++) {
+            drawSprite(SPR_MAKI, 234 + i * 24, 296, 1.3);
           }
           // Steamed rice cakes on right
           for (let i = 0; i < 3; i++) {
-            pxEllipse(366 + i * 20, 284, 8, 12, '#fff8f0');
-            pxRect(364 + i * 20, 278, 3, 5, '#ffffff');
+            drawSprite(SPR_RICE_CAKE, 362 + i * 22, 284, 1.6);
           }
         }
       }
@@ -1260,21 +1438,14 @@
       // 14-20s: Wire cooling rack & crunchy golden-brown reveal
       else {
         drawAO(320, 306, 118, 12, 0.28);
-        pxRect(204, 266, 232, 46, '#7d8590');
+        drawOutlinedRect(204, 266, 232, 46, '#7d8590');
         pxRect(208, 270, 224, 38, '#382e36');
         for (let x = 220; x < 424; x += 14) {
           pxRect(x, 270, 2, 38, '#9aa2ad');
         }
-        for (let i = 0; i < 3; i++) {
-          const cx = 256 + i * 64;
-          pxEllipse(cx, 286, 24, 15, '#c86e28');
-          pxEllipse(cx - 4, 282, 14, 8, '#e6933c');
-          pxRect(cx + 16, 284, 14, 6, '#f7efe4');
-          // Crispy craggy flakes
-          pxRect(cx - 14, 276, 5, 4, '#f2ad4e');
-          pxRect(cx + 2, 292, 5, 4, '#a35118');
-          pxRect(cx - 4, 288, 4, 3, '#ffd07b');
-        }
+        drawSprite(SPR_DRUMSTICK, 252, 286, 2.0);
+        drawSprite(SPR_THIGH, 320, 286, 2.0);
+        drawSprite(SPR_DRUMSTICK, 386, 286, 2.0, true);
         drawSteam(320, 258, 10, lt, 68, 56);
       }
     });
@@ -1318,27 +1489,19 @@
 
         if (lt > 0.6) {
           for (let i = 0; i < 3; i++) {
-            const dx = bx + 28 + i * 26;
-            pxEllipse(dx, by + 26, 10, 6, '#fff4df');
-            pxRect(dx - 3, by + 22, 2, 3, '#d6bf9e');
-            pxRect(dx + 1, by + 22, 2, 3, '#d6bf9e');
+            drawSprite(SPR_DUMPLING, bx + 28 + i * 26, by + 26, 1.2);
           }
         }
         if (lt > 2.2) {
           for (let i = 0; i < 3; i++) {
-            const sx = bx + 124 + i * 26;
-            pxCircle(sx, by + 26, 8, '#1d3426');
-            pxCircle(sx, by + 26, 6, '#faf6ee');
-            pxCircle(sx, by + 26, 3, '#f06e54');
+            drawSprite(SPR_MAKI, bx + 124 + i * 26, by + 26, 1.2);
           }
         }
         if (lt > 3.8) {
-          pxEllipse(bx + 46, by + 55, 18, 8, '#c86e28');
-          pxEllipse(bx + 42, by + 53, 10, 4, '#e6933c');
-          pxEllipse(bx + 94, by + 55, 18, 8, '#c86e28');
-          pxEllipse(bx + 90, by + 53, 10, 4, '#e6933c');
-          pxEllipse(bx + 148, by + 55, 11, 6, '#fff8f0');
-          pxEllipse(bx + 174, by + 55, 11, 6, '#fff8f0');
+          drawSprite(SPR_DRUMSTICK, bx + 46, by + 55, 1.2);
+          drawSprite(SPR_THIGH, bx + 94, by + 55, 1.2);
+          drawSprite(SPR_RICE_CAKE, bx + 148, by + 55, 1.4);
+          drawSprite(SPR_RICE_CAKE, bx + 174, by + 55, 1.4);
         }
       } else {
         pxRect(bx, by + 8, bw, bh - 8, '#e3645f');
